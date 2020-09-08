@@ -22,10 +22,16 @@ func main() {
 	fmt.Println("Listening...")
 	ln, _ := net.Listen("tcp", ":"+localPort) //some random port
 	defer ln.Close()
+
+	
+	var MessageSentCollection []map[string]bool
+	go sendMessage(MessageSentCollection)
 	for {
+		var MessageSent map[string]bool
+		MessageSentCollection = append(MessageSentCollection, MessageSent);
 		conn, _ := ln.Accept()
-		go receiveMessage(conn)
-		go sendMessage(conn)
+		go receiveMessage(conn, MessageSent)
+		
 	}
 }
 
@@ -40,19 +46,20 @@ func propagateToOtherThreads(conn net.Conn, MessageSent map[string]bool) {
 	}
 }
 
-func sendMessage(conn net.Conn) {
+func sendMessage(MessageSentCollection []map[string]bool) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		text, _ := reader.ReadString('\n')
-		bufio.NewWriter(conn).WriteString(text)
+		for MessageSent := range MessageSentCollection{
+			text, _ := reader.ReadString('\n')
+			MessageSent[text] = false
+		}
 	}
 }
 
-func receiveMessage(conn net.Conn) {
+func receiveMessage(conn net.Conn, MessageSent map[string]bool) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	fmt.Println("Connection established with " + otherEnd)
-	var MessageSent map[string]bool
 	go propagateToOtherThreads(conn, MessageSent)
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
