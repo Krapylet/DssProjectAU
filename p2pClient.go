@@ -81,4 +81,5 @@ func lookupAddress() (string, string) {
 	}
 	fmt.Println("Your ip is: " + ip)
 	fmt.Println("Your port is: " + port)
+	return ip, port
 }
