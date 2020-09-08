@@ -23,20 +23,20 @@ func main() {
 	ln, _ := net.Listen("tcp", ":"+localPort) //some random port
 	defer ln.Close()
 
-	var MessageSentCollection []map[string]bool
+	var MessageSentCollection map[net.Conn]map[string]bool
 	go sendMessage(MessageSentCollection)
+	go propagateToOtherThreads(MessageSentCollection)
 	for {
-		var MessageSent map[string]bool
-		MessageSentCollection = append(MessageSentCollection, MessageSent)
 		conn, _ := ln.Accept()
+		var MessageSent map[string]bool
+		MessageSentCollection[conn] = MessageSent
 		go receiveMessage(conn, MessageSentCollection)
-		go propagateToOtherThreads(conn, MessageSentCollection)
 	}
 }
 
-func propagateToOtherThreads(conn net.Conn, MessageSentCollection []map[string]bool) {
+func propagateToOtherThreads(MessageSentCollection map[net.Conn]map[string]bool) {
 	for {
-		for _, MessageSent := range MessageSentCollection {
+		for conn, MessageSent := range MessageSentCollection {
 			for msg, bool := range MessageSent {
 				if !bool {
 					bufio.NewWriter(conn).WriteString(msg)
@@ -47,7 +47,7 @@ func propagateToOtherThreads(conn net.Conn, MessageSentCollection []map[string]b
 	}
 }
 
-func sendMessage(MessageSentCollection []map[string]bool) {
+func sendMessage(MessageSentCollection map[net.Conn]map[string]bool) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
@@ -57,7 +57,7 @@ func sendMessage(MessageSentCollection []map[string]bool) {
 	}
 }
 
-func receiveMessage(conn net.Conn, MessageSentCollection []map[string]bool) {
+func receiveMessage(conn net.Conn, MessageSentCollection map[net.Conn]map[string]bool) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	fmt.Println("Connection established with " + otherEnd)
