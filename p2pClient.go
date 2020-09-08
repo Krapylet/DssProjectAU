@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-
 	// Try to connect to the inputted address
 	remoteIP, remotePort := inputAddress()
 	_, err := net.Dial("tcp", remoteIP+":"+remotePort)
@@ -25,11 +24,12 @@ func main() {
 	defer ln.Close()
 	for {
 		conn, _ := ln.Accept()
-		go handleConnection(conn)
+		go receiveMessage(conn)
+		go sendMessage(conn)
 	}
 }
 
-func sendMessages(conn net.Conn, MessageSent map[string]bool) {
+func propagateToOtherThreads(conn net.Conn, MessageSent map[string]bool) {
 	for {
 		for msg, bool := range MessageSent {
 			if !bool {
@@ -40,14 +40,23 @@ func sendMessages(conn net.Conn, MessageSent map[string]bool) {
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func sendMessage(conn net.Conn) {
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		text, _ := reader.ReadString('\n')
+		bufio.NewWriter(conn).WriteString(text)
+	}
+}
+
+func receiveMessage(conn net.Conn) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	fmt.Println("Connection established with " + otherEnd)
 	var MessageSent map[string]bool
-	go sendMessages(conn, MessageSent)
+	go propagateToOtherThreads(conn, MessageSent)
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
+		fmt.Print(msg)
 		if err != nil {
 			fmt.Println("Ending session with " + otherEnd)
 			return
