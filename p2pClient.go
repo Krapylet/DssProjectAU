@@ -20,6 +20,7 @@ func main() {
 	// Print IP and port on this machine
 	lookupAddress()
 
+	fmt.Println("Listening...")
 	ln, _ := net.Listen("tcp", ":"+port) //some random port
 	defer ln.Close()
 	for {
@@ -42,6 +43,7 @@ func sendMessages(conn net.Conn, MessageSent map[string]bool) {
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
+	fmt.Println("Connection established with " + otherEnd)
 	var MessageSent map[string]bool
 	go sendMessages(conn, MessageSent)
 	for {
