@@ -11,17 +11,17 @@ import (
 func main() {
 
 	// Try to connect to the inputted address
-	ip, port := inputAddress()
-	_, err := net.Dial("tcp", ip+":"+port)
+	remoteIP, remotePort := inputAddress()
+	_, err := net.Dial("tcp", remoteIP+":"+remotePort)
 	if err != nil {
 		fmt.Println("Could not connect to this address")
 	}
 
 	// Print IP and port on this machine
-	lookupAddress()
+	_, localPort := lookupAddress()
 
 	fmt.Println("Listening...")
-	ln, _ := net.Listen("tcp", ":"+port) //some random port
+	ln, _ := net.Listen("tcp", ":"+localPort) //some random port
 	defer ln.Close()
 	for {
 		conn, _ := ln.Accept()
@@ -68,7 +68,7 @@ func inputAddress() (string, string) {
 	return remoteIP, remotePort
 }
 
-func lookupAddress() {
+func lookupAddress() (string, string) {
 	// Display IP and port
 	name, _ := os.Hostname()
 	address, _ := net.LookupHost(name)
