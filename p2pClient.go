@@ -24,8 +24,7 @@ func main() {
 	defer ln.Close()
 	for {
 		conn, _ := ln.Accept()
-		c := make(chan string)
-		go handleConnection(conn, c)
+		go handleConnection(conn)
 	}
 }
 
@@ -40,7 +39,7 @@ func sendMessages(conn net.Conn, MessageSent map[string]bool) {
 	}
 }
 
-func handleConnection(conn net.Conn, c chan string) {
+func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	var MessageSent map[string]bool
@@ -51,7 +50,6 @@ func handleConnection(conn net.Conn, c chan string) {
 			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
-		c <- msg
 		MessageSent[msg] = false
 	}
 }
@@ -73,7 +71,7 @@ func lookupAddress() {
 	name, _ := os.Hostname()
 	address, _ := net.LookupHost(name)
 	ip := ""
-	port := "22222"
+	port := "18081"
 	for _, addr := range address {
 		if !strings.Contains(addr, "f") || !strings.Contains(addr, "192.168.") {
 			ip = addr
