@@ -23,44 +23,46 @@ func main() {
 	ln, _ := net.Listen("tcp", ":"+localPort) //some random port
 	defer ln.Close()
 
-	
 	var MessageSentCollection []map[string]bool
 	go sendMessage(MessageSentCollection)
 	for {
 		var MessageSent map[string]bool
-		MessageSentCollection = append(MessageSentCollection, MessageSent);
+		MessageSentCollection = append(MessageSentCollection, MessageSent)
 		conn, _ := ln.Accept()
-		go receiveMessage(conn, MessageSent)
-		
+		go receiveMessage(conn, MessageSentCollection)
+
 	}
 }
 
-func propagateToOtherThreads(conn net.Conn, MessageSent map[string]bool) {
+func propagateToOtherThreads(conn net.Conn, MessageSentCollection []map[string]bool) {
 	for {
-		for msg, bool := range MessageSent {
-			if !bool {
-				bufio.NewWriter(conn).WriteString(msg)
-				MessageSent[msg] = true
+		for _, MessageSent := range MessageSentCollection {
+			for msg, bool := range MessageSent {
+				if !bool {
+					bufio.NewWriter(conn).WriteString(msg)
+					MessageSent[msg] = true
+				}
 			}
 		}
+
 	}
 }
 
 func sendMessage(MessageSentCollection []map[string]bool) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		for MessageSent := range MessageSentCollection{
+		for _, MessageSent := range MessageSentCollection {
 			text, _ := reader.ReadString('\n')
 			MessageSent[text] = false
 		}
 	}
 }
 
-func receiveMessage(conn net.Conn, MessageSent map[string]bool) {
+func receiveMessage(conn net.Conn, MessageSentCollection []map[string]bool) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	fmt.Println("Connection established with " + otherEnd)
-	go propagateToOtherThreads(conn, MessageSent)
+	go propagateToOtherThreads(conn, MessageSentCollection)
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
 		fmt.Print(msg)
@@ -68,7 +70,9 @@ func receiveMessage(conn net.Conn, MessageSent map[string]bool) {
 			fmt.Println("Ending session with " + otherEnd)
 			return
 		}
-		MessageSent[msg] = false
+		for _, MessageSent := range MessageSentCollection {
+			MessageSent[msg] = false
+		}
 	}
 }
 
