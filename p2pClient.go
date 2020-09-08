@@ -49,10 +49,11 @@ func propagateToOtherThreads(conn net.Conn, MessageSentCollection []map[string]b
 }
 
 func sendMessage(MessageSentCollection []map[string]bool) {
-	reader := bufio.NewReader(os.Stdin)
+
 	for {
+		reader := bufio.NewReader(os.Stdin)
+		text, _ := reader.ReadString('\n')
 		for _, MessageSent := range MessageSentCollection {
-			text, _ := reader.ReadString('\n')
 			MessageSent[text] = false
 		}
 	}
