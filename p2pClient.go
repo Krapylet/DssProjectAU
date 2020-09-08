@@ -66,13 +66,14 @@ func receiveMessage(conn net.Conn, MessageSentCollection []map[string]bool) {
 	go propagateToOtherThreads(conn, MessageSentCollection)
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
-		fmt.Print(msg)
 		if err != nil {
 			fmt.Println("Ending session with " + otherEnd)
 			return
-		}
-		for _, MessageSent := range MessageSentCollection {
-			MessageSent[msg] = false
+		} else {
+			fmt.Print("Got here " + msg)
+			for _, MessageSent := range MessageSentCollection {
+				MessageSent[msg] = false
+			}
 		}
 	}
 }
