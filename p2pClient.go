@@ -30,7 +30,7 @@ func main() {
 		MessageSentCollection = append(MessageSentCollection, MessageSent)
 		conn, _ := ln.Accept()
 		go receiveMessage(conn, MessageSentCollection)
-
+		go propagateToOtherThreads(conn, MessageSentCollection)
 	}
 }
 
@@ -44,12 +44,10 @@ func propagateToOtherThreads(conn net.Conn, MessageSentCollection []map[string]b
 				}
 			}
 		}
-
 	}
 }
 
 func sendMessage(MessageSentCollection []map[string]bool) {
-
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
@@ -63,7 +61,6 @@ func receiveMessage(conn net.Conn, MessageSentCollection []map[string]bool) {
 	defer conn.Close()
 	otherEnd := conn.RemoteAddr().String()
 	fmt.Println("Connection established with " + otherEnd)
-	go propagateToOtherThreads(conn, MessageSentCollection)
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
 		if err != nil {
@@ -95,7 +92,7 @@ func lookupAddress() (string, string) {
 	name, _ := os.Hostname()
 	address, _ := net.LookupHost(name)
 	ip := ""
-	port := "18081"
+	port := "18080"
 	for _, addr := range address {
 		if !strings.Contains(addr, "f") || !strings.Contains(addr, "192.168.") {
 			ip = addr
