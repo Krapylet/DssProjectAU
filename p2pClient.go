@@ -1,4 +1,13 @@
-/*package main
+package main
+
+/*import (
+	"bufio"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+)
+
 
 import (
 	"bufio"
@@ -101,5 +110,4 @@ func lookupAddress() (string, string) {
 	fmt.Println("Your ip is: " + ip)
 	fmt.Println("Your port is: " + port)
 	return ip, port
-}
-*/
+}*/
