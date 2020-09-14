@@ -22,25 +22,26 @@ func main() {
 	// Try to connect to existing Peer
 	// Ask for IP and Port
 	fmt.Println("Connect to IP...")
-	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	remoteIP = strings.TrimSpace(remoteIP)
+	/*	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		remoteIP = strings.TrimSpace(remoteIP)*/
+	remoteIP := "127.0.0.1"
 	fmt.Println("Connect to port...")
 	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	remotePort = strings.TrimSpace(remotePort)
 
 	fmt.Println("Trying to connect to: " + remoteIP + ":" + remotePort)
-	conn, _ := net.Dial("tcp", remoteIP+":"+remotePort)
+	hostConn, _ := net.Dial("tcp", remoteIP+":"+remotePort)
 
-	if conn == nil {
+	if hostConn == nil {
 		fmt.Println("No existing peer found at: " + remoteIP + ":" + remotePort)
 	} else {
 		fmt.Println("Connection Established!")
-		defer conn.Close()
+		defer hostConn.Close()
 
 		// Add Host to known connections
-		conns = append(conns, conn)
+		conns = append(conns, hostConn)
 		// also receive message from your host
-		go receiveMessage(conn)
+		go receiveMessage(hostConn)
 	}
 
 	// Listen for incoming TCP connections
@@ -55,11 +56,6 @@ func main() {
 	// SendMessage uses the reader which blocks the TCP listener from starting or something :)
 	// so the tcp listener has to be started before running this
 	for {
-		//
-		fmt.Println("Messages in Map:")
-		for m, _ := range MessagesSent {
-			fmt.Println("Message: " + strings.TrimSpace(m))
-		}
 		// Prompt for user input and send to all known connections
 		msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		sendMessageToAll(msg)
@@ -95,14 +91,14 @@ func tcpListener() {
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
 
-		// send all previous messages to the new connection
-		go sendPreviousMessages(conn)
+		// OPTIONAL: send all previous messages to the new connection
+		sendPreviousMessages(conn)
 	}
 }
 
 func sendPreviousMessages(conn net.Conn) {
+	time.Sleep(time.Second * 1)
 	for msg, _ := range MessagesSent {
-		time.Sleep(time.Second * 1)
 		conn.Write([]byte(msg))
 	}
 }
@@ -136,7 +132,7 @@ func receiveMessage(conn net.Conn) {
 			MessagesSent[msg] = true
 
 			// Print Message
-			fmt.Println("[NEW MESSAGE]: " + msg)
+			fmt.Print("[NEW MESSAGE]: " + msg)
 
 			// also send the message to all known connections
 			go sendMessageToAll(msg)
