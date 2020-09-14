@@ -1,4 +1,4 @@
-package main
+/*package main
 
 import (
 	"bufio"
@@ -102,3 +102,4 @@ func lookupAddress() (string, string) {
 	fmt.Println("Your port is: " + port)
 	return ip, port
 }
+*/
