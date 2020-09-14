@@ -22,9 +22,8 @@ func main() {
 	// Try to connect to existing Peer
 	// Ask for IP and Port
 	fmt.Println("Connect to IP...")
-	/*	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		remoteIP = strings.TrimSpace(remoteIP)*/
-	remoteIP := "127.0.0.1"
+	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	remoteIP = strings.TrimSpace(remoteIP)
 	fmt.Println("Connect to port...")
 	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	remotePort = strings.TrimSpace(remotePort)
