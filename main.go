@@ -11,19 +11,19 @@ import (
 
 // Known connections for this peer
 var conns []net.Conn
+
 // Set of all messages sent
 var MessagesSent = make(map[string]bool)
+
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
-
 
 func main() {
 	// Try to connect to existing Peer
 	// Ask for IP and Port
 	fmt.Println("Connect to IP...")
-/*	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	remoteIP = strings.TrimSpace(remoteIP)*/
-	remoteIP := "10.192.132.142"
+	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	remoteIP = strings.TrimSpace(remoteIP)
 	fmt.Println("Connect to port...")
 	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	remotePort = strings.TrimSpace(remotePort)
@@ -32,7 +32,7 @@ func main() {
 	conn, _ := net.Dial("tcp", remoteIP+":"+remotePort)
 
 	if conn == nil {
-		fmt.Println("No existing peer found at: " + remoteIP+":"+remotePort)
+		fmt.Println("No existing peer found at: " + remoteIP + ":" + remotePort)
 	} else {
 		fmt.Println("Connection Established!")
 		defer conn.Close()
@@ -49,7 +49,7 @@ func main() {
 	// Wait for the TCP listener to run
 	for !tcpListenerRunning {
 		// wait 1 sec
-		time.Sleep(time.Second*1)
+		time.Sleep(time.Second * 1)
 	}
 
 	// SendMessage uses the reader which blocks the TCP listener from starting or something :)
@@ -67,12 +67,11 @@ func main() {
 
 }
 
-
 func tcpListener() {
 	// Open own port for incoming TCP
 	// Local IP
-	// TODO: Kan stadig ikke få den der lookup til at virke til ens egen ip :(, men skal nok bruges her
-	localIP := "10.192.132.142"
+	// Runs on local network
+	localIP := "127.0.0.1"
 	fmt.Println("Listen for TCP connections at port...")
 	localPort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	localPort = strings.TrimSpace(localPort)
@@ -103,8 +102,8 @@ func tcpListener() {
 
 func sendPreviousMessages(conn net.Conn) {
 	for msg, _ := range MessagesSent {
-		time.Sleep(time.Second*1)
-		conn.Write([]byte (msg))
+		time.Sleep(time.Second * 1)
+		conn.Write([]byte(msg))
 	}
 }
 
@@ -113,7 +112,7 @@ func sendMessageToAll(msg string) {
 	MessagesSent[msg] = true
 	// write msg to all known connections
 	for i := range conns {
-		conns[i].Write([]byte (msg))
+		conns[i].Write([]byte(msg))
 	}
 }
 
