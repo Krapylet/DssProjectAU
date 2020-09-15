@@ -96,8 +96,8 @@ func tcpListener() {
 }
 
 func sendPreviousMessages(conn net.Conn) {
-	time.Sleep(time.Second * 1)
 	for msg, _ := range MessagesSent {
+		time.Sleep(time.Second * 1)
 		conn.Write([]byte(msg))
 	}
 }
