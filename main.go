@@ -22,8 +22,9 @@ func main() {
 	// Try to connect to existing Peer
 	// Ask for IP and Port
 	fmt.Println("Connect to IP...")
-	remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	remoteIP = strings.TrimSpace(remoteIP)
+	//remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	//remoteIP = strings.TrimSpace(remoteIP)
+	remoteIP := "127.0.0.1"
 	fmt.Println("Connect to port...")
 	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	remotePort = strings.TrimSpace(remotePort)
@@ -41,6 +42,12 @@ func main() {
 		conns = append(conns, hostConn)
 		// also receive message from your host
 		go receiveMessage(hostConn)
+
+		// Get my connection from host
+		myAddress := ""
+		for len(myAddress) == 0 {
+
+		}
 	}
 
 	// Listen for incoming TCP connections
@@ -74,7 +81,7 @@ func tcpListener() {
 	ln, err := net.Listen("tcp", ":"+localPort)
 	if err != nil {
 		fmt.Println("Error listening to: " + localPort)
-		panic(-1)
+		panic(err)
 	}
 	defer ln.Close()
 
@@ -89,9 +96,6 @@ func tcpListener() {
 
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
-
-		// OPTIONAL: send all previous messages to the new connection
-		sendPreviousMessages(conn)
 	}
 }
 
@@ -104,11 +108,15 @@ func sendPreviousMessages(conn net.Conn) {
 
 func sendMessageToAll(msg string) {
 	// Insert message into map
-	MessagesSent[msg] = true
+	// MessagesSent[msg] = true
 	// write msg to all known connections
 	for i := range conns {
 		conns[i].Write([]byte(msg))
 	}
+}
+
+func sendMessage(msg string, conn net.Conn) {
+	conn.Write([]byte (msg))
 }
 
 func receiveMessage(conn net.Conn) {
@@ -120,21 +128,26 @@ func receiveMessage(conn net.Conn) {
 			return
 		}
 		// Check if the message is contained in the set of messages
-		_, ok := MessagesSent[msg]
-		if ok {
-			// msg is contained in map
+		//_, ok := MessagesSent[msg]
+		//if ok {
+		//	// msg is contained in map
+		//
+		//	// Do nothing ???
+		//} else {
+		//	// msg is not in map
+		//	// add msg to map
+		//	MessagesSent[msg] = true
+		//
+		//	// Print Message
+		//	fmt.Print("[NEW MESSAGE]: " + msg)
+		//
+		//	// also send the message to all known connections
+		//	go sendMessageToAll(msg)
+		//}
 
-			// Do nothing ???
-		} else {
-			// msg is not in map
-			// add msg to map
-			MessagesSent[msg] = true
-
-			// Print Message
-			fmt.Print("[NEW MESSAGE]: " + msg)
-
-			// also send the message to all known connections
-			go sendMessageToAll(msg)
+		if msg == "!returnConn" {
+			sendMessage("!answerToReturnConn " + conn.RemoteAddr().String(), conn)
 		}
+		fmt.Print("[NEW MESSAGE]: " + msg)
 	}
 }
