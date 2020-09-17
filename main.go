@@ -191,10 +191,10 @@ func connectToPeers() {
 				go receiveMessage(conn)
 			}
 			// Update connCounter, i.e. connected to a new peer.
-			connCounter ++;
+			connCounter ++
 		}
 		// Get next position
-		pos --;
+		pos --
 	}
 }
 
