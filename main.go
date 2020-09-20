@@ -77,9 +77,6 @@ func main() {
 		for !gotConnsList {
 			time.Sleep(time.Second)
 		}
-
-		// Set myAddress, is last element in the received list of peers from host.
-		myAddress = addresses[len(addresses)-1]
 	}
 
 	// Listen for incoming TCP connections
@@ -98,6 +95,22 @@ func main() {
 	for {
 		// Prompt for user input and send to all known connections
 		msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+
+		if msg == "a\n" {
+			fmt.Println("--- MY ADDRESSES ---")
+			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
+			for i := range addresses {
+				fmt.Println("-> " + addresses[i])
+			}
+		}
+		if msg == "c\n" {
+			fmt.Println("--- MY CONS ---")
+			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
+			for i := range conns {
+				fmt.Println("-> " + conns[i].RemoteAddr().String())
+			}
+		}
+		
 		sendMessageToAll(msg)
 	}
 
@@ -155,6 +168,80 @@ func sendListOfPeers(conn net.Conn) {
 	sendMessage(peerAddresses+"\n", conn)
 }
 
+func receiveMessage(conn net.Conn) {
+	// Keeps checking for new messages
+	for {
+		msg, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
+			return
+		}
+
+
+		// Check if message contains token for request to get list of connections
+		if strings.Contains(msg, "!getConnsList") {
+			sendListOfPeers(conn)
+		}
+
+		// Check if message contains identifier for answer to list of connections
+		if strings.Contains(msg, "!PEERS") {
+			// Get addresses of peers
+			receiveListOfPeers(msg)
+			// Connect to 10 newest peers
+			connectToPeers()
+
+			// Broadcast that you've connected
+			msgToBroadcast := "!NEWCONNECTION;"+myAddress+"\n"
+			MessagesSent[msgToBroadcast] = true
+			sendMessageToAll(msgToBroadcast)
+		}
+
+		// Add to your list of peers
+		if strings.Contains(msg, "!NEWCONNECTION") {
+			// Check if message has already been received
+			_, inMap := MessagesSent[msg]
+
+			// Has NOT been received...
+			if !inMap {
+
+				// Insert that this message has been received
+				MessagesSent[msg] = true
+
+				// Get the address from the received message
+				// Split is 0 = !NEWCONNECTION, 1 = ip:port
+				address := strings.Split(msg, ";")[1]
+				address = strings.TrimSpace(address)
+
+				// check if the address is already known by this peer
+				if !strings.Contains(strings.Join(addresses, ","), address) {
+					// Not known, so add to list of addresses
+					addresses = append(addresses, address)
+				}
+				// Send the message to all the known connections of this peer too
+				sendMessageToAll(msg)
+			}
+		}
+
+		// Check if the message is contained in the set of messages
+		_, inMap := MessagesSent[msg]
+		if inMap {
+			// msg is contained in map
+
+			// Do nothing ???
+		} else {
+			// msg is not in map
+			// add msg to map
+			MessagesSent[msg] = true
+
+			// Print Message
+			fmt.Print("[NEW MESSAGE]: " + msg)
+
+			// also send the message to all known connections
+			// go sendMessageToAll(msg)
+		}
+	}
+}
+
 func receiveListOfPeers(msg string) {
 	fmt.Println("Received List...")
 	// Split message at each address, separator is ';'
@@ -165,6 +252,8 @@ func receiveListOfPeers(msg string) {
 		fmt.Println("Address added: " + splitMsg[i])
 		addresses = append(addresses, splitMsg[i])
 	}
+	// Set myAddress, is last element in the received list of peers from host.
+	myAddress = addresses[len(addresses)-1]
 	// List of peers is received
 	gotConnsList = true
 }
@@ -174,7 +263,7 @@ func connectToPeers() {
 	connCounter := 0
 	// Gets the last position in addresses which are not yourself
 	pos := len(addresses) - 2
-	for connCounter < 10 && pos >= 0 {
+	for connCounter < 1 && pos >= 0 {
 		currentAddr := addresses[pos]
 		// Makes sure we dont connect to our host again...
 		if currentAddr != myHost {
@@ -195,44 +284,5 @@ func connectToPeers() {
 		}
 		// Get next position
 		pos --
-	}
-}
-
-func receiveMessage(conn net.Conn) {
-	// Keeps checking for new messages
-	for {
-		msg, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
-			return
-		}
-
-		// Check if message contains token for request to get list of connections
-		if strings.Contains(msg, "!getConnsList") {
-			sendListOfPeers(conn)
-		}
-		// Check if message contains identifier for answer to list of connections
-		if strings.Contains(msg, "!PEERS") {
-			receiveListOfPeers(msg)
-			connectToPeers()
-		}
-
-		// Check if the message is contained in the set of messages
-		_, ok := MessagesSent[msg]
-		if ok {
-			// msg is contained in map
-
-			// Do nothing ???
-		} else {
-			// msg is not in map
-			// add msg to map
-			MessagesSent[msg] = true
-
-			// Print Message
-			fmt.Print("[NEW MESSAGE]: " + msg)
-
-			// also send the message to all known connections
-			// go sendMessageToAll(msg)
-		}
 	}
 }
