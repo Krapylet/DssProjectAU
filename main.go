@@ -5,26 +5,36 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"./account"
 )
 
 // String containing your ip and port "ip:port"
 var myAddress string
-var myHost string
 
 // All active connections of this peer
 var conns []net.Conn
+
 // Addresses of all known peers
 var addresses []string
 
-// Set of all messages sent
+// MessagesSent Set of all messages sent
 var MessagesSent = make(map[string]bool)
 
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
+
 // Bool to determine if the list of connections is received
 var gotConnsList bool
+
+var ledger *account.Ledger = account.MakeLedger()
+
+var transactionCounter = 0
+
+var myPort = ""
 
 func main() {
 	// Try to connect to existing Peer
@@ -46,11 +56,11 @@ func main() {
 		// Give ip and port of where to listen for TCP connections
 		myIP := "127.0.0.1"
 		fmt.Println("Listen for TCP connections at port...")
-		myPort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		myPort, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 		myPort = strings.TrimSpace(myPort)
 
 		// Set myAddress
-		myAddress = myIP+":"+myPort
+		myAddress = myIP + ":" + myPort
 
 		// add yourself to known peers on the network
 		addresses = append(addresses, myIP+":"+myPort)
@@ -59,13 +69,9 @@ func main() {
 		fmt.Println("Connection Established!")
 		defer hostConn.Close()
 
-		// Add Host to active connections
-		conns = append(conns, hostConn)
+		// Dont add hostConn to list of active conns since we are disconnecting it soon...
 
-		// Set myHost
-		myHost = hostConn.RemoteAddr().String()
-
-		// also receive message from your host
+		// Receive message from your host
 		go receiveMessage(hostConn)
 
 		// Get the list of all peers from host
@@ -77,6 +83,8 @@ func main() {
 		for !gotConnsList {
 			time.Sleep(time.Second)
 		}
+
+		hostConn.Close()
 	}
 
 	// Listen for incoming TCP connections
@@ -96,24 +104,55 @@ func main() {
 		// Prompt for user input and send to all known connections
 		msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 
-		if msg == "a\n" {
+		//_________________DEBUG COMMANDS__________________
+		if strings.Contains(msg, "!A") {
 			fmt.Println("--- MY ADDRESSES ---")
 			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
 			for i := range addresses {
 				fmt.Println("-> " + addresses[i])
 			}
+			continue
 		}
-		if msg == "c\n" {
+		if strings.Contains(msg, "!C") {
 			fmt.Println("--- MY CONS ---")
 			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
 			for i := range conns {
 				fmt.Println("-> " + conns[i].RemoteAddr().String())
 			}
+			continue
 		}
-		
+
+		if strings.Contains(msg, "!L") {
+			fmt.Println("--- MY LEDGER ---")
+			for key, value := range ledger.Accounts {
+				fmt.Println(key + ": " + strconv.Itoa(value))
+			}
+			fmt.Println("-----------------")
+			continue
+		}
+		//______________________TRANSACTION COMMAND___________________________
+		// "SEND xxxx From YYYY to zzzz"
+		var splitMsg []string = strings.Split(msg, " ")
+		var isSendCommand bool = splitMsg[0] == "SEND"
+		var containsSixArguments bool = len(splitMsg) == 4
+		if isSendCommand && containsSixArguments {
+			//Convert the command to a transaction object
+			var t *account.Transaction = new(account.Transaction)
+			t.ID = myAddress + ":" + strconv.Itoa(transactionCounter)
+			t.Amount, _ = strconv.Atoi(splitMsg[1])
+			t.From = splitMsg[2]
+			t.To = splitMsg[3]
+
+			//Apply the transaction locally
+			ledger.Transaction(t)
+
+			//overwrite the outgoing message with the marshall of the transaction object
+			msg = "!TRANSACTION " + t.ID + " " + strconv.Itoa(t.Amount) + " " + t.From + " " + t.To
+
+			transactionCounter++
+		}
 		sendMessageToAll(msg)
 	}
-
 }
 
 func tcpListener(myIP string, myPort string) {
@@ -154,7 +193,7 @@ func sendMessageToAll(msg string) {
 }
 
 func sendMessage(msg string, conn net.Conn) {
-	conn.Write([]byte (msg))
+	conn.Write([]byte(msg))
 }
 
 func sendListOfPeers(conn net.Conn) {
@@ -172,11 +211,11 @@ func receiveMessage(conn net.Conn) {
 	// Keeps checking for new messages
 	for {
 		msg, err := bufio.NewReader(conn).ReadString('\n')
+
 		if err != nil {
 			fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
 			return
 		}
-
 
 		// Check if message contains token for request to get list of connections
 		if strings.Contains(msg, "!getConnsList") {
@@ -187,11 +226,13 @@ func receiveMessage(conn net.Conn) {
 		if strings.Contains(msg, "!PEERS") {
 			// Get addresses of peers
 			receiveListOfPeers(msg)
+			// Disconnect from initial host
+
 			// Connect to 10 newest peers
 			connectToPeers()
 
 			// Broadcast that you've connected
-			msgToBroadcast := "!NEWCONNECTION;"+myAddress+"\n"
+			msgToBroadcast := "!NEWCONNECTION;" + myAddress + "\n"
 			MessagesSent[msgToBroadcast] = true
 			sendMessageToAll(msgToBroadcast)
 		}
@@ -220,6 +261,18 @@ func receiveMessage(conn net.Conn) {
 				// Send the message to all the known connections of this peer too
 				sendMessageToAll(msg)
 			}
+		}
+		// "!TRANSACTION ID AMOUNT FROM TO"
+		// A transaction has shape "ID, AMOUNT, FROM, TO"
+		if strings.Contains(msg, "!TRANSACTION") {
+			if MessagesSent[msg] == true {
+				break
+			}
+			input := strings.Split(msg, " ")
+			amount, _ := strconv.Atoi(input[2])
+			t := &account.Transaction{input[1], input[3], input[4], amount}
+			ledger.Transaction(t)
+			sendMessageToAll(msg)
 		}
 
 		// Check if the message is contained in the set of messages
@@ -263,26 +316,23 @@ func connectToPeers() {
 	connCounter := 0
 	// Gets the last position in addresses which are not yourself
 	pos := len(addresses) - 2
-	for connCounter < 1 && pos >= 0 {
-		currentAddr := addresses[pos]
+	for connCounter < 10 && pos >= 0 {
 		// Makes sure we dont connect to our host again...
-		if currentAddr != myHost {
-			// Try to connect to peer
-			conn, _ := net.Dial("tcp", addresses[pos])
+		// Try to connect to peer
+		conn, _ := net.Dial("tcp", addresses[pos])
 
-			if conn == nil {
-				fmt.Println("Failed to connect to: " + conn.RemoteAddr().String())
-			} else {
-				fmt.Println("Connection established with: " + conn.RemoteAddr().String())
-				// Add connection to active connections
-				conns = append(conns, conn)
-				// Setup message receiver for this conn
-				go receiveMessage(conn)
-			}
-			// Update connCounter, i.e. connected to a new peer.
-			connCounter ++
+		if conn == nil {
+			fmt.Println("Failed to connect to: " + conn.RemoteAddr().String())
+		} else {
+			fmt.Println("Connection established with: " + conn.RemoteAddr().String())
+			// Add connection to active connections
+			conns = append(conns, conn)
+			// Setup message receiver for this conn
+			go receiveMessage(conn)
 		}
+		// Update connCounter, i.e. connected to a new peer.
+		connCounter++
 		// Get next position
-		pos --
+		pos--
 	}
 }
