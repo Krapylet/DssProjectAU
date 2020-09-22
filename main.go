@@ -127,12 +127,14 @@ func main() {
 			}
 			fmt.Println("-----------------")
 		}
+
+		var splitMsg []string = strings.Split(msg, " ")
+
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND 'amount' 'from' 'to'"
-		var splitMsg []string = strings.Split(msg, " ")
 		var isSendCommand bool = splitMsg[0] == "SEND"
-		var containsSixArguments bool = len(splitMsg) == 4
-		if isSendCommand && containsSixArguments {
+		var containsThreeArguments bool = len(splitMsg) == 4
+		if isSendCommand && containsThreeArguments {
 			//Convert the command to a transaction object
 			var t *account.Transaction = new(account.Transaction)
 			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
@@ -144,6 +146,15 @@ func main() {
 			ledger.Transaction(t)
 
 			SendMessageToAll("TRANSACTION", t)
+		}
+
+		//________________________QUIT COMMAND_______________________________
+		// "QUIT"
+		var isQuitCommand bool = splitMsg[0] == "QUIT\r\n"
+		if isQuitCommand {
+			println("Quitting")
+			SendMessageToAll("DISCONNECT", myAddress)
+			break
 		}
 	}
 }
@@ -182,6 +193,7 @@ func SendMessageToAll(typeString string, msg interface{}) {
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
 	// Insert message into map of known messages
 	MessagesSeen[combinedMsg] = true
+	println("<< type: " + typeString + ", ID: " + myAddress)
 	// write msg to all known connections
 	for i := range conns {
 		conns[i].Write([]byte(combinedMsg))
@@ -306,7 +318,6 @@ func receiveMessage(conn net.Conn) {
 			//unmarshal the array of messages
 			var messages []string
 			json.Unmarshal(marshalledMsg, &messages)
-			println(string(marshalledMsg))
 			for i := range messages {
 				//get message
 				message := messages[i]
@@ -340,7 +351,15 @@ func receiveMessage(conn net.Conn) {
 			break
 		//Recieve a disconnect message
 		case "DISCONNECT":
+			//Remove connection from known connections
 			removeConn(conn)
+
+			//Remove adress from known adresses
+			var address string
+			json.Unmarshal(marshalledMsg, &address)
+			removeAddress(address)
+
+			//Close connection
 			conn.Close()
 			break
 		}
@@ -385,4 +404,18 @@ func removeConn(conn net.Conn) {
 	}
 	//Overwrite conns with temp
 	conns = temp
+}
+
+//Removes an adress from the global array of adresses
+func removeAddress(address string) {
+	//Create a temporary holder for valid connections
+	var temp []string
+	//Copy all connections except the one we want to remove into temp
+	for i := range addresses {
+		if addresses[i] != address {
+			temp = append(temp, addresses[i])
+		}
+	}
+	//Overwrite conns with temp
+	addresses = temp
 }
