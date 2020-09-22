@@ -85,7 +85,7 @@ func main() {
 
 		// we received the list of addresses so the host is connection is not needed
 		// fmt.Println("Disconnection from host...")
-		hostConn.Close()
+		// hostConn.Close()
 	}
 
 	// Listen for incoming TCP connections
@@ -248,8 +248,8 @@ func receiveMessage(conn net.Conn) {
 			fmt.Println("Disconnection from host...")
 
 			//Disconnect from old holst
-			//sendMessage("DISCONNECT", "", conn)
-			//removeConn(conn)
+			sendMessage("DISCONNECT", "", conn)
+			removeConn(conn)
 
 			//Connect to new peers
 			connectToPeers()
@@ -282,8 +282,8 @@ func receiveMessage(conn net.Conn) {
 			forward(msgReceived)
 			break
 		case "DISCONNECT":
-			//removeConn(conn)
-			//conn.Close()
+			removeConn(conn)
+			conn.Close()
 			break
 		}
 	}
