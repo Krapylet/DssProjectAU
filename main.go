@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"./account"
@@ -24,6 +25,9 @@ var addresses []string
 
 // MessagesSeen Set of all messages sent
 var MessagesSeen = make(map[string]bool)
+
+// MessagesSeenLock makes sure the map isnt written to and read from at the same time
+var MessagesSeenLock = new(sync.RWMutex)
 
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
@@ -54,7 +58,6 @@ func main() {
 
 		// Give ip and port of where to listen for TCP connections
 		myIP := "127.0.0.1"
-		fmt.Println("Listen for TCP connections at standard port 20000")
 		myPort := "20000"
 
 		// Set myAddress
@@ -73,7 +76,7 @@ func main() {
 		// Get the list of all peers from host
 		// Send message to request it...
 		fmt.Println("Requesting List...")
-		sendMessage("GETCONNSLIST", "", hostConn)
+		SendMessage("GETPEERLIST", "", hostConn)
 		// wait until connection list is received
 		for !gotConnsList {
 			time.Sleep(time.Second)
@@ -137,7 +140,7 @@ func main() {
 			//Apply the transaction locally
 			ledger.Transaction(t)
 
-			sendMessageToAll("TRANSACTION", t)
+			SendMessageToAll("TRANSACTION", t)
 		}
 	}
 }
@@ -167,7 +170,7 @@ func tcpListener(myIP string, myPort string) {
 }
 
 //Sends a new message to known peers. This increases the messageIDCounter
-func sendMessageToAll(typeString string, msg interface{}) {
+func SendMessageToAll(typeString string, msg interface{}) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
 	// Calculate the message ID
@@ -184,8 +187,6 @@ func sendMessageToAll(typeString string, msg interface{}) {
 
 //forwards messages recieved to known peers without chaning it
 func forward(msg string) {
-	// Insert message into map of known messages
-	MessagesSeen[msg] = true
 	// write msg to all known connections
 	for i := range conns {
 		conns[i].Write([]byte(msg))
@@ -193,12 +194,14 @@ func forward(msg string) {
 }
 
 //Sends a message to a single peer. Only used for special purposes such as initialization.
-func sendMessage(typeString string, msg interface{}, conn net.Conn) {
+func SendMessage(typeString string, msg interface{}, conn net.Conn) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
 	// Calculate message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
+	// Insert message into map of known messages
+	MessagesSeen[combinedMsg] = true
 	// write msg to target connection
 	conn.Write([]byte(combinedMsg))
 }
@@ -214,21 +217,29 @@ func receiveMessage(conn net.Conn) {
 		}
 
 		//Break if we have already seen the message
+		MessagesSeenLock.Lock()
 		_, seen := MessagesSeen[msgReceived]
 		if seen {
 			continue
 		}
+		//If we have now seen the message if we hadn't earlier
+		MessagesSeen[msgReceived] = true
+		MessagesSeenLock.Unlock()
 
 		// Messages have the format id;typeString;msg where msg can have any type
 		splitMsg := strings.Split(msgReceived, ";")
 		typeString := splitMsg[1]
 		marshalledMsg := []byte(splitMsg[2])
 
+		println(typeString)
+
 		switch typeString {
-		case "GETCONNSLIST":
+		// Request for list of all peers
+		case "GETPEERLIST":
 			// Recevied a request to get a list of known peers. Send list
-			sendMessage("PEERS", addresses, conn)
+			SendMessage("PEERS", addresses, conn)
 			break
+		// List of of all peers
 		case "PEERS":
 			var peerList []string
 			err := json.Unmarshal(marshalledMsg, &peerList)
@@ -243,7 +254,7 @@ func receiveMessage(conn net.Conn) {
 			fmt.Println("Disconnection from host...")
 
 			//Disconnect from old holst
-			sendMessage("DISCONNECT", "", conn)
+			SendMessage("DISCONNECT", "", conn)
 			removeConn(conn)
 
 			//Connect to new peers
@@ -252,8 +263,15 @@ func receiveMessage(conn net.Conn) {
 			gotConnsList = true
 
 			// Broadcast that you've connected
-			sendMessageToAll("NEWCONNECTION", myAddress)
+			SendMessageToAll("NEWCONNECTION", myAddress)
+			println("is about to ask for transactions")
+
+			// Ask a peer for previous transactions
+			peerConn := conns[len(conns)-1]
+			SendMessage("GETALLTRANSACTIONS", "", peerConn)
+			println("asked for transactions")
 			break
+		// Nitification that a new peer has jouned the network
 		case "NEWCONNECTION":
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
@@ -266,6 +284,52 @@ func receiveMessage(conn net.Conn) {
 			// Send the message to all the known connections of this peer too
 			forward(msgReceived)
 			break
+		//request all transactions
+		case "GETALLTRANSACTIONS":
+			var transactions []string
+			MessagesSeenLock.RLock()
+			for key := range MessagesSeen {
+				println("I'm stuck")
+				//Get type of key
+				keyType := strings.Split(key, ";")[1]
+				//Append all seen transactions to temp
+				if keyType == "TRANSACTION" {
+					transactions = append(transactions, key)
+				}
+			}
+			MessagesSeenLock.RUnlock()
+			println("I'm not stuck anymore")
+			println(transactions)
+			println("Sending to port " + conn.RemoteAddr().String())
+			SendMessage("ALLTRANSACTIONS", transactions, conn)
+			break
+		//A list of all transactions that the peer at conn has seen
+		case "ALLTRANSACTIONS":
+			//unmarshal the array of messages
+			var messages []string
+			json.Unmarshal(marshalledMsg, &messages)
+			for i := range messages {
+				//get message
+				message := messages[i]
+
+				MessagesSeenLock.Lock()
+				//Skip messages already accounted for
+				if MessagesSeen[message] {
+					continue
+				}
+				MessagesSeen[message] = true
+				MessagesSeenLock.Unlock()
+
+				//Get the marshalled transaction
+				marshalledTransaction := strings.Split(message, ";")[2]
+
+				//Unmarshal and apply the transaction
+				var t account.Transaction
+				json.Unmarshal([]byte(marshalledTransaction), &t)
+				ledger.Transaction(&t)
+			}
+			break
+		//a transaction
 		case "TRANSACTION":
 			// Unmarshal the transaction
 			var t account.Transaction
@@ -275,6 +339,7 @@ func receiveMessage(conn net.Conn) {
 			// Broadcast this transaction
 			forward(msgReceived)
 			break
+		//Recieve a disconnect message
 		case "DISCONNECT":
 			removeConn(conn)
 			conn.Close()
