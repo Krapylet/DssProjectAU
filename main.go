@@ -85,7 +85,7 @@ func main() {
 
 		// we received the list of addresses so the host is connection is not needed
 		// fmt.Println("Disconnection from host...")
-		// hostConn.Close()
+		//hostConn.Close()
 	}
 
 	// Listen for incoming TCP connections
@@ -175,7 +175,7 @@ func tcpListener(myIP string, myPort string) {
 		conns = append(conns, conn)
 		// New known peer address
 		//addresses = append(addresses, conn.RemoteAddr().String())
-		println(conn.RemoteAddr().String())
+		//println(conn.RemoteAddr().String())
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
 	}
@@ -225,6 +225,7 @@ func receiveMessage(conn net.Conn) {
 		}
 
 		// Messages have the format id;typeString;msg where msg can have any type
+		fmt.Println("MESSAGE HERE : " + msgReceived)
 		splitMsg := strings.Split(msgReceived, ";")
 		typeString := splitMsg[1]
 		marshalledMsg := []byte(splitMsg[2])
