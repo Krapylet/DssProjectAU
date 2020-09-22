@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -21,8 +22,8 @@ var conns []net.Conn
 // Addresses of all known peers
 var addresses []string
 
-// MessagesSent Set of all messages sent
-var MessagesSent = make(map[string]bool)
+// MessagesSeen Set of all messages sent
+var MessagesSeen = make(map[string]bool)
 
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
@@ -32,9 +33,7 @@ var gotConnsList bool
 
 var ledger *account.Ledger = account.MakeLedger()
 
-var transactionCounter = 0
-
-var myPort = ""
+var MessageIDCounter = 0
 
 func main() {
 	// Try to connect to existing Peer
@@ -56,7 +55,7 @@ func main() {
 		// Give ip and port of where to listen for TCP connections
 		myIP := "127.0.0.1"
 		fmt.Println("Listen for TCP connections at port...")
-		myPort, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		myPort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		myPort = strings.TrimSpace(myPort)
 
 		// Set myAddress
@@ -77,13 +76,12 @@ func main() {
 		// Get the list of all peers from host
 		// Send message to request it...
 		fmt.Println("Requesting List...")
-		sendMessage("!getConnsList\n", hostConn)
-
+		sendMessage("GETCONNSLIST", "", hostConn)
 		// wait until connection list is received
 		for !gotConnsList {
 			time.Sleep(time.Second)
 		}
-
+		// we received the list of addresses so the host is connection is not needed
 		hostConn.Close()
 	}
 
@@ -101,6 +99,8 @@ func main() {
 	// SendMessage uses the reader which blocks the TCP listener from starting or something :)
 	// so the tcp listener has to be started before running this
 	for {
+		fmt.Print("To make a new transaction, use: SEND 'amount' 'from' 'to' > ")
+
 		// Prompt for user input and send to all known connections
 		msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 
@@ -111,7 +111,6 @@ func main() {
 			for i := range addresses {
 				fmt.Println("-> " + addresses[i])
 			}
-			continue
 		}
 		if strings.Contains(msg, "!C") {
 			fmt.Println("--- MY CONS ---")
@@ -119,7 +118,6 @@ func main() {
 			for i := range conns {
 				fmt.Println("-> " + conns[i].RemoteAddr().String())
 			}
-			continue
 		}
 
 		if strings.Contains(msg, "!L") {
@@ -128,7 +126,6 @@ func main() {
 				fmt.Println(key + ": " + strconv.Itoa(value))
 			}
 			fmt.Println("-----------------")
-			continue
 		}
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND xxxx From YYYY to zzzz"
@@ -138,20 +135,18 @@ func main() {
 		if isSendCommand && containsSixArguments {
 			//Convert the command to a transaction object
 			var t *account.Transaction = new(account.Transaction)
-			t.ID = myAddress + ":" + strconv.Itoa(transactionCounter)
+			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
 			t.Amount, _ = strconv.Atoi(splitMsg[1])
 			t.From = splitMsg[2]
-			t.To = splitMsg[3]
+			t.To = strings.TrimSpace(splitMsg[3])
 
 			//Apply the transaction locally
 			ledger.Transaction(t)
 
-			//overwrite the outgoing message with the marshall of the transaction object
-			msg = "!TRANSACTION " + t.ID + " " + strconv.Itoa(t.Amount) + " " + t.From + " " + t.To
+			sendMessageToAll("TRANSACTION", t)
 
-			transactionCounter++
+			MessageIDCounter++
 		}
-		sendMessageToAll(msg)
 	}
 }
 
@@ -183,132 +178,98 @@ func tcpListener(myIP string, myPort string) {
 	}
 }
 
-func sendMessageToAll(msg string) {
+func sendMessageToAll(typeString string, msg interface{}) {
+
+	marshalledMsg, _ := json.Marshal(msg)
+	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
 	// Insert message into map
-	MessagesSent[msg] = true
+	MessagesSeen[combinedMsg] = true
 	// write msg to all known connections
+	for i := range conns {
+		conns[i].Write([]byte(combinedMsg))
+	}
+}
+
+func forward(msg string) {
+	MessagesSeen[msg] = true
 	for i := range conns {
 		conns[i].Write([]byte(msg))
 	}
 }
 
-func sendMessage(msg string, conn net.Conn) {
-	conn.Write([]byte(msg))
-}
-
-func sendListOfPeers(conn net.Conn) {
-	// Build string of all known addresses of peers separated by ';'
-	peerAddresses := "!PEERS"
-	for i := range addresses {
-		peerAddresses = peerAddresses + ";" + addresses[i]
-	}
-	// Send message back to the caller with all known peers.
-	fmt.Println("Sending message with all known peers...")
-	sendMessage(peerAddresses+"\n", conn)
+func sendMessage(typeString string, msg interface{}, conn net.Conn) {
+	marshalledMsg, _ := json.Marshal(msg)
+	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
+	conn.Write([]byte(combinedMsg))
 }
 
 func receiveMessage(conn net.Conn) {
 	// Keeps checking for new messages
 	for {
-		msg, err := bufio.NewReader(conn).ReadString('\n')
+		msgReceived, err := bufio.NewReader(conn).ReadString('\n')
 
 		if err != nil {
 			fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
 			return
 		}
 
-		// Check if message contains token for request to get list of connections
-		if strings.Contains(msg, "!getConnsList") {
-			sendListOfPeers(conn)
+		//Break if we have already seen the message
+		if MessagesSeen[msgReceived] {
+			continue
 		}
 
-		// Check if message contains identifier for answer to list of connections
-		if strings.Contains(msg, "!PEERS") {
-			// Get addresses of peers
-			receiveListOfPeers(msg)
-			// Disconnect from initial host
+		// Messages have the format id;typeString;msg where msg can have any type
+		splitMsg := strings.Split(msgReceived, ";")
+		typeString := splitMsg[1]
+		marshalledMsg := []byte(splitMsg[2])
 
-			// Connect to 10 newest peers
+		switch typeString {
+		case "GETCONNSLIST":
+			// Recevied a request to get a list of known peers. Send list
+			sendMessage("PEERS", addresses, conn)
+			break
+		case "PEERS":
+			var peerList []string
+			err := json.Unmarshal(marshalledMsg, &peerList)
+			if err != nil {
+				fmt.Print("Could not unmarshal at PEERS..., " + err.Error())
+			}
+			addresses = peerList
 			connectToPeers()
 
 			// Broadcast that you've connected
-			msgToBroadcast := "!NEWCONNECTION;" + myAddress + "\n"
-			MessagesSent[msgToBroadcast] = true
-			sendMessageToAll(msgToBroadcast)
-		}
+			sendMessageToAll("NEWCONNECTION", myAddress)
+			break
+		case "NEWCONNECTION":
 
-		// Add to your list of peers
-		if strings.Contains(msg, "!NEWCONNECTION") {
-			// Check if message has already been received
-			_, inMap := MessagesSent[msg]
+			// Insert that this message has been received
+			MessagesSeen[msgReceived] = true
 
-			// Has NOT been received...
-			if !inMap {
+			var address string
+			json.Unmarshal(marshalledMsg, &address)
 
-				// Insert that this message has been received
-				MessagesSent[msg] = true
-
-				// Get the address from the received message
-				// Split is 0 = !NEWCONNECTION, 1 = ip:port
-				address := strings.Split(msg, ";")[1]
-				address = strings.TrimSpace(address)
-
-				// check if the address is already known by this peer
-				if !strings.Contains(strings.Join(addresses, ","), address) {
-					// Not known, so add to list of addresses
-					addresses = append(addresses, address)
-				}
-				// Send the message to all the known connections of this peer too
-				sendMessageToAll(msg)
+			// check if the address is already known by this peer
+			if !strings.Contains(strings.Join(addresses, ","), address) {
+				// Not known, so add to list of addresses
+				addresses = append(addresses, address)
 			}
-		}
-		// "!TRANSACTION ID AMOUNT FROM TO"
-		// A transaction has shape "ID, AMOUNT, FROM, TO"
-		if strings.Contains(msg, "!TRANSACTION") {
-			if MessagesSent[msg] == true {
-				break
-			}
-			input := strings.Split(msg, " ")
-			amount, _ := strconv.Atoi(input[2])
-			t := &account.Transaction{input[1], input[3], input[4], amount}
-			ledger.Transaction(t)
-			sendMessageToAll(msg)
-		}
+			// Send the message to all the known connections of this peer too
+			sendMessageToAll("NEWCONNECTION", msgReceived)
+			break
+		case "TRANSACTION":
 
-		// Check if the message is contained in the set of messages
-		_, inMap := MessagesSent[msg]
-		if inMap {
-			// msg is contained in map
-
-			// Do nothing ???
-		} else {
-			// msg is not in map
-			// add msg to map
-			MessagesSent[msg] = true
-
-			// Print Message
-			fmt.Print("[NEW MESSAGE]: " + msg)
-
-			// also send the message to all known connections
-			// go sendMessageToAll(msg)
+			// Unmarshal the transaction
+			var t account.Transaction
+			json.Unmarshal(marshalledMsg, &t)
+			// Update ledger
+			ledger.Transaction(&t)
+			// Broadcast this transaction
+			sendMessageToAll("TRANSACTION", t)
+			break
 		}
 	}
-}
-
-func receiveListOfPeers(msg string) {
-	fmt.Println("Received List...")
-	// Split message at each address, separator is ';'
-	msg = strings.TrimSpace(msg)
-	splitMsg := strings.Split(msg, ";")
-	// Add each peer to Addresses, 1st element is identifier so is skipped
-	for i := 1; i < len(splitMsg); i++ {
-		fmt.Println("Address added: " + splitMsg[i])
-		addresses = append(addresses, splitMsg[i])
-	}
-	// Set myAddress, is last element in the received list of peers from host.
-	myAddress = addresses[len(addresses)-1]
-	// List of peers is received
-	gotConnsList = true
 }
 
 func connectToPeers() {
