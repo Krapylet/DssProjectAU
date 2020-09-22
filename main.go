@@ -73,6 +73,9 @@ func main() {
 		// Receive message from your host
 		go receiveMessage(hostConn)
 
+		//Before the client has been assigned a popper port, says it has port NEW. Messages from NEW ports are never put into MessagesSeen
+		myAddress = "127.0.0.1:NEW"
+
 		// Get the list of all peers from host
 		// Send message to request it...
 		fmt.Println("Requesting List...")
@@ -193,15 +196,15 @@ func forward(msg string) {
 	}
 }
 
-//Sends a message to a single peer. Only used for special purposes such as initialization.
+//Sends a message to a single peer. Only used for special purposes such as initialization. The same message can be sent multiple times
 func SendMessage(typeString string, msg interface{}, conn net.Conn) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
 	// Calculate message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
-	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
-	// Insert message into map of known messages
-	MessagesSeen[combinedMsg] = true
+	//Prepend S to the message to show that it shouldn't be mapped
+	combinedMsg := "S" + id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
+	println("<- type: " + typeString + ", to: " + conn.LocalAddr().String() + ", ID: " + myAddress)
 	// write msg to target connection
 	conn.Write([]byte(combinedMsg))
 }
@@ -216,23 +219,23 @@ func receiveMessage(conn net.Conn) {
 			return
 		}
 
+		splitMsg := strings.Split(msgReceived, ";")
+		typeString := splitMsg[1]
+		ID := splitMsg[0]
+		println("-> type: " + typeString + ", from: " + conn.LocalAddr().String() + ", ID: " + ID)
 		//Break if we have already seen the message
 		MessagesSeenLock.Lock()
-		_, seen := MessagesSeen[msgReceived]
+		seen := MessagesSeen[msgReceived] && !strings.Contains(ID, "S")
 		if seen {
 			MessagesSeenLock.Unlock()
 			continue
 		}
-		//If we have now seen the message if we hadn't earlier
 		MessagesSeen[msgReceived] = true
 		MessagesSeenLock.Unlock()
 
 		// Messages have the format id;typeString;msg where msg can have any type
-		splitMsg := strings.Split(msgReceived, ";")
-		typeString := splitMsg[1]
-		marshalledMsg := []byte(splitMsg[2])
 
-		println(typeString)
+		marshalledMsg := []byte(strings.Join(splitMsg[2:], ";"))
 
 		switch typeString {
 		// Request for list of all peers
@@ -265,12 +268,10 @@ func receiveMessage(conn net.Conn) {
 
 			// Broadcast that you've connected
 			SendMessageToAll("NEWCONNECTION", myAddress)
-			println("is about to ask for transactions")
 
 			// Ask a peer for previous transactions
 			peerConn := conns[len(conns)-1]
 			SendMessage("GETALLTRANSACTIONS", "", peerConn)
-			println("asked for transactions")
 			break
 		// Nitification that a new peer has jouned the network
 		case "NEWCONNECTION":
@@ -290,7 +291,6 @@ func receiveMessage(conn net.Conn) {
 			var transactions []string
 			MessagesSeenLock.RLock()
 			for key := range MessagesSeen {
-				println("I'm stuck")
 				//Get type of key
 				keyType := strings.Split(key, ";")[1]
 				//Append all seen transactions to temp
@@ -299,9 +299,6 @@ func receiveMessage(conn net.Conn) {
 				}
 			}
 			MessagesSeenLock.RUnlock()
-			println("I'm not stuck anymore")
-			println(transactions)
-			println("Sending to port " + conn.RemoteAddr().String())
 			SendMessage("ALLTRANSACTIONS", transactions, conn)
 			break
 		//A list of all transactions that the peer at conn has seen
@@ -309,6 +306,7 @@ func receiveMessage(conn net.Conn) {
 			//unmarshal the array of messages
 			var messages []string
 			json.Unmarshal(marshalledMsg, &messages)
+			println(string(marshalledMsg))
 			for i := range messages {
 				//get message
 				message := messages[i]
@@ -316,11 +314,11 @@ func receiveMessage(conn net.Conn) {
 				MessagesSeenLock.Lock()
 				//Skip messages already accounted for
 				if MessagesSeen[message] {
+					MessagesSeenLock.Unlock()
 					continue
 				}
 				MessagesSeen[message] = true
 				MessagesSeenLock.Unlock()
-
 				//Get the marshalled transaction
 				marshalledTransaction := strings.Split(message, ";")[2]
 
