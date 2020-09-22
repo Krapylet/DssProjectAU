@@ -220,6 +220,7 @@ func receiveMessage(conn net.Conn) {
 		MessagesSeenLock.Lock()
 		_, seen := MessagesSeen[msgReceived]
 		if seen {
+			MessagesSeenLock.Unlock()
 			continue
 		}
 		//If we have now seen the message if we hadn't earlier
