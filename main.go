@@ -105,18 +105,21 @@ func main() {
 		// Prompt for user input and send to all known connections
 		msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 
+		//Trim msg of leading and trailing whitespace
+		msg = strings.TrimSpace(msg)
+
 		//_________________DEBUG COMMANDS__________________
 		if strings.Contains(msg, "!A") {
 			fmt.Println("--- KNOWN LISTENERS ---")
-			fmt.Println("(I LISTEN ON -> " + myAddress + ")")
+			fmt.Println("(I LISTEN ON: " + myAddress + ")")
 			for i := range addresses {
-				fmt.Println("-> " + addresses[i])
+				fmt.Println("-" + addresses[i])
 			}
 		}
 		if strings.Contains(msg, "!C") {
 			fmt.Println("--- MY CONS ---")
 			for i := range conns {
-				fmt.Println("-> " + conns[i].RemoteAddr().String())
+				fmt.Println("-" + conns[i].RemoteAddr().String())
 			}
 		}
 
@@ -133,8 +136,7 @@ func main() {
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND 'amount' 'from' 'to'"
 		var isSendCommand bool = splitMsg[0] == "SEND"
-		var containsThreeArguments bool = len(splitMsg) == 4
-		if isSendCommand && containsThreeArguments {
+		if isSendCommand {
 			//Convert the command to a transaction object
 			var t *account.Transaction = new(account.Transaction)
 			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
@@ -150,7 +152,7 @@ func main() {
 
 		//________________________QUIT COMMAND_______________________________
 		// "QUIT"
-		var isQuitCommand bool = splitMsg[0] == "QUIT\r\n"
+		var isQuitCommand bool = splitMsg[0] == "QUIT"
 		if isQuitCommand {
 			println("Quitting")
 			SendMessageToAll("DISCONNECT", myAddress)
