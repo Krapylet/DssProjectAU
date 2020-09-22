@@ -54,22 +54,18 @@ func main() {
 
 		// Give ip and port of where to listen for TCP connections
 		myIP := "127.0.0.1"
-		fmt.Println("Listen for TCP connections at port...")
-		myPort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-		myPort = strings.TrimSpace(myPort)
+		fmt.Println("Listen for TCP connections at standard port 20000")
+		myPort := "20000"
 
 		// Set myAddress
 		myAddress = myIP + ":" + myPort
 
 		// add yourself to known peers on the network
 		addresses = append(addresses, myIP+":"+myPort)
-		println(myIP + ":" + myPort)
 
 	} else {
 		fmt.Println("Connection Established!")
 		defer hostConn.Close()
-
-		// Dont add hostConn to list of active conns since we are disconnecting it soon...
 
 		// Receive message from your host
 		go receiveMessage(hostConn)
@@ -82,10 +78,6 @@ func main() {
 		for !gotConnsList {
 			time.Sleep(time.Second)
 		}
-
-		// we received the list of addresses so the host is connection is not needed
-		// fmt.Println("Disconnection from host...")
-		//hostConn.Close()
 	}
 
 	// Listen for incoming TCP connections
@@ -109,15 +101,14 @@ func main() {
 
 		//_________________DEBUG COMMANDS__________________
 		if strings.Contains(msg, "!A") {
-			fmt.Println("--- MY ADDRESSES ---")
-			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
+			fmt.Println("--- KNOWN LISTENERS ---")
+			fmt.Println("(I LISTEN ON -> " + myAddress + ")")
 			for i := range addresses {
 				fmt.Println("-> " + addresses[i])
 			}
 		}
 		if strings.Contains(msg, "!C") {
 			fmt.Println("--- MY CONS ---")
-			fmt.Println("(MY ADDRESS -> " + myAddress + ")")
 			for i := range conns {
 				fmt.Println("-> " + conns[i].RemoteAddr().String())
 			}
@@ -131,7 +122,7 @@ func main() {
 			fmt.Println("-----------------")
 		}
 		//______________________TRANSACTION COMMAND___________________________
-		// "SEND xxxx From YYYY to zzzz"
+		// "SEND 'amount' 'from' 'to'"
 		var splitMsg []string = strings.Split(msg, " ")
 		var isSendCommand bool = splitMsg[0] == "SEND"
 		var containsSixArguments bool = len(splitMsg) == 4
@@ -147,8 +138,6 @@ func main() {
 			ledger.Transaction(t)
 
 			sendMessageToAll("TRANSACTION", t)
-
-			MessageIDCounter++
 		}
 	}
 }
@@ -166,27 +155,26 @@ func tcpListener(myIP string, myPort string) {
 
 	// TCP listener is running
 	tcpListenerRunning = true
-
+	fmt.Println("LISTENING ON PORT -> " + myIP + ":" + myPort)
 	for {
-		fmt.Println("Listening on: " + myIP + ":" + myPort)
 		conn, _ := ln.Accept()
 		fmt.Println("Got a new connection from: " + conn.RemoteAddr().String())
 		// New active connection
 		conns = append(conns, conn)
-		// New known peer address
-		//addresses = append(addresses, conn.RemoteAddr().String())
-		//println(conn.RemoteAddr().String())
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
 	}
 }
 
+//Sends a new message to known peers. This increases the messageIDCounter
 func sendMessageToAll(typeString string, msg interface{}) {
-
+	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
+	// Calculate the message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+	MessageIDCounter++
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
-	// Insert message into map
+	// Insert message into map of known messages
 	MessagesSeen[combinedMsg] = true
 	// write msg to all known connections
 	for i := range conns {
@@ -194,17 +182,24 @@ func sendMessageToAll(typeString string, msg interface{}) {
 	}
 }
 
+//forwards messages recieved to known peers without chaning it
 func forward(msg string) {
+	// Insert message into map of known messages
 	MessagesSeen[msg] = true
+	// write msg to all known connections
 	for i := range conns {
 		conns[i].Write([]byte(msg))
 	}
 }
 
+//Sends a message to a single peer. Only used for special purposes such as initialization.
 func sendMessage(typeString string, msg interface{}, conn net.Conn) {
+	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
+	// Calculate message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
+	// write msg to target connection
 	conn.Write([]byte(combinedMsg))
 }
 
@@ -214,7 +209,7 @@ func receiveMessage(conn net.Conn) {
 		msgReceived, err := bufio.NewReader(conn).ReadString('\n')
 
 		if err != nil {
-			fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
+			//fmt.Println("Error reading message: " + err.Error() + ", disconnecting...")
 			return
 		}
 
@@ -225,7 +220,6 @@ func receiveMessage(conn net.Conn) {
 		}
 
 		// Messages have the format id;typeString;msg where msg can have any type
-		fmt.Println("MESSAGE HERE : " + msgReceived)
 		splitMsg := strings.Split(msgReceived, ";")
 		typeString := splitMsg[1]
 		marshalledMsg := []byte(splitMsg[2])
@@ -268,7 +262,6 @@ func receiveMessage(conn net.Conn) {
 			if !strings.Contains(strings.Join(addresses, ","), address) {
 				// Not known, so add to list of addresses
 				addresses = append(addresses, address)
-				println(address)
 			}
 			// Send the message to all the known connections of this peer too
 			forward(msgReceived)
@@ -316,12 +309,16 @@ func connectToPeers() {
 	}
 }
 
+//Removes a connection from the global array of connections
 func removeConn(conn net.Conn) {
+	//Create a temporary holder for valid connections
 	var temp []net.Conn
+	//Copy all connections except the one we want to remove into temp
 	for i := range conns {
 		if conns[i] != conn {
 			temp = append(temp, conns[i])
 		}
 	}
+	//Overwrite conns with temp
 	conns = temp
 }
