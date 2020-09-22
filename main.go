@@ -63,6 +63,7 @@ func main() {
 
 		// add yourself to known peers on the network
 		addresses = append(addresses, myIP+":"+myPort)
+		println(myIP + ":" + myPort)
 
 	} else {
 		fmt.Println("Connection Established!")
@@ -81,7 +82,9 @@ func main() {
 		for !gotConnsList {
 			time.Sleep(time.Second)
 		}
+
 		// we received the list of addresses so the host is connection is not needed
+		// fmt.Println("Disconnection from host...")
 		hostConn.Close()
 	}
 
@@ -157,7 +160,7 @@ func tcpListener(myIP string, myPort string) {
 	ln, err := net.Listen("tcp", ":"+myPort)
 	if err != nil {
 		fmt.Println("Error listening to: " + myPort)
-		panic(-1)
+		panic(err.Error())
 	}
 	defer ln.Close()
 
@@ -171,8 +174,8 @@ func tcpListener(myIP string, myPort string) {
 		// New active connection
 		conns = append(conns, conn)
 		// New known peer address
-		addresses = append(addresses, conn.RemoteAddr().String())
-
+		//addresses = append(addresses, conn.RemoteAddr().String())
+		println(conn.RemoteAddr().String())
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
 	}
@@ -216,7 +219,8 @@ func receiveMessage(conn net.Conn) {
 		}
 
 		//Break if we have already seen the message
-		if MessagesSeen[msgReceived] {
+		_, seen := MessagesSeen[msgReceived]
+		if seen {
 			continue
 		}
 
@@ -236,17 +240,26 @@ func receiveMessage(conn net.Conn) {
 			if err != nil {
 				fmt.Print("Could not unmarshal at PEERS..., " + err.Error())
 			}
+
 			addresses = peerList
+
+			addresses = append(addresses, conn.LocalAddr().String())
+
+			fmt.Println("Disconnection from host...")
+
+			//Disconnect from old holst
+			//sendMessage("DISCONNECT", "", conn)
+			//removeConn(conn)
+
+			//Connect to new peers
 			connectToPeers()
+			myAddress = addresses[len(addresses)-1]
+			gotConnsList = true
 
 			// Broadcast that you've connected
 			sendMessageToAll("NEWCONNECTION", myAddress)
 			break
 		case "NEWCONNECTION":
-
-			// Insert that this message has been received
-			MessagesSeen[msgReceived] = true
-
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
 
@@ -254,19 +267,23 @@ func receiveMessage(conn net.Conn) {
 			if !strings.Contains(strings.Join(addresses, ","), address) {
 				// Not known, so add to list of addresses
 				addresses = append(addresses, address)
+				println(address)
 			}
 			// Send the message to all the known connections of this peer too
-			sendMessageToAll("NEWCONNECTION", msgReceived)
+			forward(msgReceived)
 			break
 		case "TRANSACTION":
-
 			// Unmarshal the transaction
 			var t account.Transaction
 			json.Unmarshal(marshalledMsg, &t)
 			// Update ledger
 			ledger.Transaction(&t)
 			// Broadcast this transaction
-			sendMessageToAll("TRANSACTION", t)
+			forward(msgReceived)
+			break
+		case "DISCONNECT":
+			//removeConn(conn)
+			//conn.Close()
 			break
 		}
 	}
@@ -283,7 +300,7 @@ func connectToPeers() {
 		conn, _ := net.Dial("tcp", addresses[pos])
 
 		if conn == nil {
-			fmt.Println("Failed to connect to: " + conn.RemoteAddr().String())
+			fmt.Println("Failed to connect to: " + addresses[pos])
 		} else {
 			fmt.Println("Connection established with: " + conn.RemoteAddr().String())
 			// Add connection to active connections
@@ -296,4 +313,14 @@ func connectToPeers() {
 		// Get next position
 		pos--
 	}
+}
+
+func removeConn(conn net.Conn) {
+	var temp []net.Conn
+	for i := range conns {
+		if conns[i] != conn {
+			temp = append(temp, conns[i])
+		}
+	}
+	conns = temp
 }
