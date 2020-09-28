@@ -19,7 +19,7 @@ type SecretKey struct {
 
 func main() {
 
-	pk, sk := KeyGen(12)
+	pk, sk := KeyGen(1000)
 
 	m := big.NewInt(123)
 	fmt.Println("My msg is:", m)
@@ -58,13 +58,12 @@ func KeyGen(k int64) (PublicKey, SecretKey) {
 		lenQInt, _ := strconv.Atoi(lenQ.String())
 		q, _ = rand.Prime(rand.Reader, lenQInt)
 
-		fmt.Println("p =", p, " q =",q)
+		fmt.Println("p =", p, " q =", q)
 
 		// p and q cannot be equal
 		if p.Cmp(q) == 0 {
 			continue
 		}
-
 
 		// (p-1)(q-1)
 		T = new(big.Int).Mul(new(big.Int).Sub(p, one), new(big.Int).Sub(q, one))
@@ -102,7 +101,7 @@ func Encrypt(pk PublicKey, msg big.Int) *big.Int {
 		panic("Msg is not in range 0 < msg < n-1")
 	}
 
-	cipher := new(big.Int).Mod(new(big.Int).Exp(&msg, pk.E, nil), pk.N)
+	cipher := new(big.Int).Exp(&msg, pk.E, pk.N)
 
 	return cipher
 }
@@ -110,10 +109,8 @@ func Encrypt(pk PublicKey, msg big.Int) *big.Int {
 func Decrypt(sk SecretKey, cipher big.Int) *big.Int {
 	// m = c^d mod n
 	fmt.Println("Decrypting...")
-	// Compute c^d
-	t := new(big.Int).Exp(&cipher, sk.D, nil)
-	// Compute t mod n
-	msg := new(big.Int).Mod(t, sk.N)
+	// Compute msg
+	msg := new(big.Int).Exp(&cipher, sk.D, sk.N)
 
 	return msg
 }
