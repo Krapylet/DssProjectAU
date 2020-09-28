@@ -22,8 +22,6 @@ func Run() {
 		fmt.Println("n does not have length k: k = " + strconv.Itoa(k) + ", len(n) = " + strconv.Itoa(pk.N.BitLen()))
 	}
 
-	fmt.Println()
-
 	fmt.Println("Encrypt: ")
 	m := big.NewInt(64)
 	fmt.Println("Length of m is: " + strconv.Itoa(m.BitLen()))
@@ -38,7 +36,7 @@ func Run() {
 	RSA: public key consist of two numbers n and e, and the private key consists of two numbers n and d.
 
 	n is 'modulus' and is the product of two prime numbers p,q.
-	e most be chosen such that, gcd(e) = gcd(p-1) = gcd(q-1) = 1
+	e most be chosen such that, gcd(e, p-1) = gcd(e, q-1) = 1
 	Then d is computed to satisfy: e * d mod (p-1)(q-1) = 1, gives: d = e^(-1) mod (p-1)(q-1)
 
 	To encrypt: c = m^e mod n
@@ -69,8 +67,8 @@ func KeyGen(k int) (PublicKey, SecretKey) {
 	lenQ := k - lenP
 
 	// choose Primes for p and q
-	p, _ := rand.Prime(rand.Reader, lenP)
-	q, _ := rand.Prime(rand.Reader, lenQ)
+	p := choosePrimes(lenP, e)
+	q := choosePrimes(lenQ, e)
 
 	fmt.Println("p is: ", p)
 	fmt.Println("q is: ", q)
@@ -129,4 +127,24 @@ func Decrypt(sk SecretKey, c *big.Int) *big.Int {
 	m := new(big.Int).Mod(t, sk.N)
 
 	return m
+}
+
+// choosePrimes calculates a prime with bit-length len, and a gcd with e of 1. This is a stupid implementation
+func choosePrimes(len int, e *big.Int) *big.Int {
+	// Choose initial prime
+	a, _ := rand.Prime(rand.Reader, len)
+	for {
+		// Calculate GCD
+		b := new(big.Int).Sub(a, big.NewInt(1))
+		gcd := new(big.Int).GCD(nil, nil, e, b).Int64()
+
+		if gcd == int64(1) {
+			// If gcd is 1, we have a suitable prime
+			break
+		} else {
+			// Otherwise calculate a new prime
+			a, _ = rand.Prime(rand.Reader, len)
+		}
+	}
+	return a
 }
