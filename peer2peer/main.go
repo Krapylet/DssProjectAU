@@ -1,4 +1,4 @@
-package peer2peer
+package main
 
 import (
 	"bufio"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"../account"
+	"./account"
 )
 
 // String containing your ip and port "ip:port"
@@ -39,7 +39,7 @@ var ledger *account.Ledger = account.MakeLedger()
 
 var MessageIDCounter = 0
 
-func start() {
+func main() {
 	// Try to connect to existing Peer
 	// Ask for IP and Port
 	fmt.Println("Connect to IP...")

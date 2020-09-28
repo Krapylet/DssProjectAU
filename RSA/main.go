@@ -19,7 +19,7 @@ type SecretKey struct {
 
 func main() {
 
-	pk, sk := KeyGen(1000)
+	pk, sk := KeyGen(2048)
 
 	m := big.NewInt(123)
 	fmt.Println("My msg is:", m)
