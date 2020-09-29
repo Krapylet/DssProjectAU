@@ -12,7 +12,7 @@ import (
 var iv []byte
 
 /*
-MakeAESKey Precondtion: byteLen hhas to be 16, 24 or 32, returns a random key
+MakeAESKey Precondtion: byteLen has to be 16, 24 or 32, returns a random key
 */
 func MakeAESKey(byteLen int) []byte {
 
