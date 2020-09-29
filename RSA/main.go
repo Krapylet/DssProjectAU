@@ -1,8 +1,7 @@
-package main
+package RSA
 
 import (
 	"crypto/rand"
-	"fmt"
 	"math/big"
 	"strconv"
 )
@@ -15,42 +14,6 @@ type PublicKey struct {
 type SecretKey struct {
 	N *big.Int
 	D *big.Int
-}
-
-func main() {
-
-	test()
-
-	//pk, sk := KeyGen(2048)
-	//
-	//m := big.NewInt(123)
-	//fmt.Println("My msg is:", m)
-	//
-	//c := Encrypt(pk, *m)
-	//fmt.Println("My cipher text is: ", c)
-	//
-	//originalMsg := Decrypt(sk, *c)
-	//fmt.Println("My original msg is: ", originalMsg)
-
-}
-
-// Do 10 random tests with k = 2048
-func test() {
-	for i := 0; i < 10; i++ {
-		pk, sk := KeyGen(2048)
-
-		m, _ := rand.Int(rand.Reader, big.NewInt(1000000000000))
-
-		c := Encrypt(pk, *m)
-
-		originalMsg := Decrypt(sk, *c)
-
-		if m.Cmp(originalMsg) != 0 {
-			fmt.Println(m)
-			panic("Mistake found")
-		}
-	}
-	fmt.Println("Done")
 }
 
 // Precondition for k to be > 3

@@ -1,4 +1,4 @@
-package main
+package AES
 
 import (
 	"crypto/aes"
@@ -13,14 +13,8 @@ import (
 var iv []byte
 
 func main() {
-	// Key has to have length 16, 24 or 32
-	key := make([]byte, 16)
-	// fill with random bytes
-	_, err := io.ReadFull(rand.Reader, key)
 
-	if err != nil {
-		panic(err)
-	}
+	key := MakeAESKey(16)
 
 	fmt.Println("Key is: ", key)
 
@@ -36,6 +30,22 @@ func main() {
 
 	fmt.Println("original message: " + string(m))
 
+}
+
+/*
+MakeAESKey Precondtion: byteLen hhas to be 16, 24 or 32, returns a random key
+*/
+func MakeAESKey(byteLen int) []byte {
+
+	key := make([]byte, byteLen)
+	// fill with random bytes, i.e. make a random key
+	_, err := io.ReadFull(rand.Reader, key)
+	
+	if err != nil {
+		panic(err)
+	}
+
+	return key
 }
 
 /*
