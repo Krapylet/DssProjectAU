@@ -4,33 +4,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 )
 
 var iv []byte
-
-func main() {
-
-	key := MakeAESKey(16)
-
-	fmt.Println("Key is: ", key)
-
-	msg := []byte("hej med dig :)\n")
-
-	fmt.Println("msg: " + string(msg))
-
-	c := EncryptToFile("encrypted.txt", msg, key)
-
-	fmt.Println("cipher: ", string(c))
-
-	m := DecryptFromFile("encrypted.txt", key)
-
-	fmt.Println("original message: " + string(m))
-
-}
 
 /*
 MakeAESKey Precondtion: byteLen hhas to be 16, 24 or 32, returns a random key
@@ -40,7 +19,7 @@ func MakeAESKey(byteLen int) []byte {
 	key := make([]byte, byteLen)
 	// fill with random bytes, i.e. make a random key
 	_, err := io.ReadFull(rand.Reader, key)
-	
+
 	if err != nil {
 		panic(err)
 	}
@@ -131,41 +110,3 @@ func readFromFile(fileName string) []byte {
 
 	return text
 }
-
-/*
-func EncryptToFile(FileName string, key string) {
-	// Open file
-	f, _ := os.Open(FileName)
-	defer f.Close()
-	reader := bufio.NewReader(f)
-	buffer := make([]byte, 16)
-	block, _ := aes.NewCipher([]byte(key))
-	encryptedBytes := make([]byte, 0)
-	for {
-		n, err := io.ReadFull(reader, buffer)
-		if err != nil {
-			if err.Error() == "ErrUnexpectedEOF" && n != 0 {
-				buffer = PadToSize(buffer, 16)
-			} else {
-				println("Error, number of bytes read: ", n)
-				println("hey" + err.Error() + string(buffer))
-				break
-			}
-		}
-
-		block.Encrypt(buffer, buffer)
-		encryptedBytes = append(encryptedBytes, buffer...)
-	}
-	fmt.Println(string(encryptedBytes))
-}
-
-func DecryptToFile(key string) {
-	//block, _ = aes.NewCipher([]byte(key))
-}
-
-func PadToSize(message []byte, blockSize int) (paddedMessage []byte) {
-	characterDeficit := blockSize - (len(message) % blockSize)
-	padding := strings.Repeat("X", characterDeficit)
-	return []byte(string(message) + padding)
-}
-*/
