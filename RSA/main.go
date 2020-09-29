@@ -19,17 +19,38 @@ type SecretKey struct {
 
 func main() {
 
-	pk, sk := KeyGen(2048)
+	test()
 
-	m := big.NewInt(123)
-	fmt.Println("My msg is:", m)
+	//pk, sk := KeyGen(2048)
+	//
+	//m := big.NewInt(123)
+	//fmt.Println("My msg is:", m)
+	//
+	//c := Encrypt(pk, *m)
+	//fmt.Println("My cipher text is: ", c)
+	//
+	//originalMsg := Decrypt(sk, *c)
+	//fmt.Println("My original msg is: ", originalMsg)
 
-	c := Encrypt(pk, *m)
-	fmt.Println("My cipher text is: ", c)
+}
 
-	originalMsg := Decrypt(sk, *c)
-	fmt.Println("My original msg is: ", originalMsg)
+// Do 10 random tests with k = 2048
+func test() {
+	for i := 0; i < 10; i++ {
+		pk, sk := KeyGen(2048)
 
+		m, _ := rand.Int(rand.Reader, big.NewInt(1000000000000))
+
+		c := Encrypt(pk, *m)
+
+		originalMsg := Decrypt(sk, *c)
+
+		if m.Cmp(originalMsg) != 0 {
+			fmt.Println(m)
+			panic("Mistake found")
+		}
+	}
+	fmt.Println("Done")
 }
 
 // Precondition for k to be > 3
@@ -58,7 +79,7 @@ func KeyGen(k int64) (PublicKey, SecretKey) {
 		lenQInt, _ := strconv.Atoi(lenQ.String())
 		q, _ = rand.Prime(rand.Reader, lenQInt)
 
-		fmt.Println("p =", p, " q =", q)
+		// fmt.Println("p =", p, " q =", q)
 
 		// p and q cannot be equal
 		if p.Cmp(q) == 0 {
@@ -74,15 +95,15 @@ func KeyGen(k int64) (PublicKey, SecretKey) {
 		if gcd.String() == "1" {
 
 			n = new(big.Int).Mul(p, q)
-			fmt.Println("n =", n)
+			// fmt.Println("n =", n)
 			break
 		}
 	}
-	fmt.Println("Primes found: p =", p, " q =", q)
+	// fmt.Println("Primes found: p =", p, " q =", q)
 
 	d := new(big.Int).ModInverse(e, T)
 
-	fmt.Println("d = ", d)
+	// fmt.Println("d = ", d)
 
 	pk.E = e
 	pk.N = n
@@ -95,7 +116,7 @@ func KeyGen(k int64) (PublicKey, SecretKey) {
 
 func Encrypt(pk PublicKey, msg big.Int) *big.Int {
 	// c = m^e mod n
-	fmt.Println("Encrypting...")
+	// fmt.Println("Encrypting...")
 
 	if msg.Cmp(pk.N) != -1 {
 		panic("Msg is not in range 0 < msg < n-1")
@@ -108,7 +129,7 @@ func Encrypt(pk PublicKey, msg big.Int) *big.Int {
 
 func Decrypt(sk SecretKey, cipher big.Int) *big.Int {
 	// m = c^d mod n
-	fmt.Println("Decrypting...")
+	// fmt.Println("Decrypting...")
 	// Compute msg
 	msg := new(big.Int).Exp(&cipher, sk.D, sk.N)
 
