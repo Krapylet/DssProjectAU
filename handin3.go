@@ -16,6 +16,7 @@ func main() {
 
 	fmt.Println("\nStarting AES test")
 	// Encrypts a RSA secret key, decrypts it again and uses it for RSA decryption
+	// creates a file "TestRSAKey.txt" with the encryption of the secret RSA key
 	testAES()
 }
 
