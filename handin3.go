@@ -61,4 +61,8 @@ func testAES() {
 	decryptedMSG := RSA.Decrypt(RSASecretKey, *cipher)
 
 	fmt.Println("Decrypted message is: ", decryptedMSG.Int64())
+
+	if decryptedMSG.Cmp(msg) != 0 {
+		panic("Mistake found")
+	}
 }
