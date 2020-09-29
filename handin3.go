@@ -10,10 +10,15 @@ import (
 )
 
 func main() {
+
+	fmt.Println("RSA TESTING...")
 	// will panic if a mistake decryption was found
 	testRSA()
 
-	//
+	fmt.Println()
+
+	fmt.Println("AES CTR TESTING...")
+	// creates a file "TestRSAKey.txt", with the encryption of the secret key
 	testAES()
 }
 
