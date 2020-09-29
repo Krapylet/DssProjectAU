@@ -31,7 +31,7 @@ func MakeAESKey(byteLen int) []byte {
 EncryptToFile encrypts message msg with key, writes the output to a file and returns the encrypted message.
 The file does not need to exist prior to calling
 */
-func EncryptToFile(fileName string, msg []byte, key []byte) []byte {
+func EncryptToFile(fileName string, msg []byte, key []byte) {
 
 	// Create a new aes block
 	myBlock, _ := aes.NewCipher(key)
@@ -56,8 +56,6 @@ func EncryptToFile(fileName string, msg []byte, key []byte) []byte {
 
 	// write it to file
 	writeToFile(fileName, cipherText)
-
-	return cipherText
 }
 
 /*
