@@ -11,9 +11,11 @@ import (
 
 func main() {
 	// will panic if a mistake decryption was found
+	fmt.Println("Starting RSA test")
 	testRSA()
 
-	//
+	fmt.Println("\nStarting AES test")
+	// Encrypts a RSA secret key, decrypts it again and uses it for RSA decryption
 	testAES()
 }
 
@@ -54,6 +56,7 @@ func testAES() {
 	var RSASecretKey RSA.SecretKey
 	json.Unmarshal(AES.DecryptFromFile("TestRSAKey.txt", AESKey), &RSASecretKey)
 
+	// Use the decrypted secret key to decrypt the RSA cipher
 	decryptedMSG := RSA.Decrypt(RSASecretKey, *cipher)
 
 	fmt.Println("Decrypted message is: ", decryptedMSG.Int64())
