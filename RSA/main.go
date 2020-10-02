@@ -1,7 +1,10 @@
-package RSA
+package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 	"strconv"
 )
@@ -89,4 +92,67 @@ func Decrypt(sk SecretKey, cipher big.Int) *big.Int {
 	msg := new(big.Int).Exp(&cipher, sk.D, sk.N)
 
 	return msg
+}
+
+// --- RSA Signatures ---
+
+func main() {
+
+	pk, sk := KeyGen(2048)
+
+	msg := []byte("heeej")
+
+	// Make hash of msg
+	hash := makeSHA256(msg)
+	// Get Hex representation of the hash
+	hashedHex := hex.EncodeToString(hash)
+	// ParseInt(string, base, bitSize), base is 16 since its hex, and bitSize 64 for int64
+	hashedInt, _ := strconv.ParseInt(hashedHex, 16, 64)
+	// Create bigInt
+	msgBigInt := big.NewInt(hashedInt)
+
+	s := Sign(*msgBigInt, sk)
+
+	// modify msg
+	modMsg := new(big.Int).Add(msgBigInt, big.NewInt(1))
+
+	v := Verify(*s, *modMsg, pk)
+
+	fmt.Println("msgInt: ", msgBigInt)
+	fmt.Println("Signed: ", s)
+	fmt.Println("Verified: ", v)
+}
+
+/*
+	Sign: Sign the message using s = m^d mod n,
+	where msg = original msg, sk = secret key,
+	returns the signed message
+*/
+func Sign(msg big.Int, sk SecretKey) *big.Int {
+	s := new(big.Int).Exp(&msg, sk.D, sk.N)
+	return s
+}
+
+/*
+	Verify: Verifies if the msg and signed msg match, i.e. m = s^e mod n,
+	where s = signedMsg, msg = original msg, pk = public key,
+	returns true if the pk makes the signed msg into msg
+	else false.
+*/
+func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
+	// Compute m = s^e mod n
+	m := new(big.Int).Exp(&s, pk.E, pk.N)
+
+	// if the original message is equal to the (de)signed message
+	// using the PK, the SK and PK most match, and therefore the it most be signed by
+	// whoever these keys belongs to
+	if m.Cmp(&msg) == 0 {
+		return true
+	}
+	return false
+}
+
+func makeSHA256(msg []byte) []byte {
+	h := sha256.Sum256(msg)
+	return h[:]
 }
