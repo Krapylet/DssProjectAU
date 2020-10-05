@@ -106,16 +106,57 @@ func main() {
 	msg := make([]byte, 10000)
 	io.ReadFull(rand.Reader, msg)
 
+	// 2. Time for hashing
 	start := time.Now()
 	// Make hash of msg
 	hash := big.NewInt(makeSHA256(msg))
 	elapsed := time.Since(start)
 	fmt.Println("Time spent hashing: ", elapsed)
+	fmt.Println("BitsPerSec = ", 10000/elapsed.Seconds())
+	//  Around 315.786.149 bits per sec
 
+	// 3. Time for RSA using the hash value
 	start = time.Now()
 	s := Sign(*hash, sk)
 	elapsed = time.Since(start)
-	fmt.Println("Time spent signing: ", elapsed)
+	fmt.Println("Time spent signing (hash): ", elapsed)
+	fmt.Println("BitsPerSec = ", 10000/elapsed.Seconds())
+	// Around 2.520.726 bits per sec
+
+	// 3.
+	msg1 := make([]byte, 1999)
+	msg2 := make([]byte, 1999)
+	msg3 := make([]byte, 1999)
+	msg4 := make([]byte, 1999)
+	msg5 := make([]byte, 1999)
+	io.ReadFull(rand.Reader, msg1)
+	io.ReadFull(rand.Reader, msg2)
+	io.ReadFull(rand.Reader, msg3)
+	io.ReadFull(rand.Reader, msg4)
+	io.ReadFull(rand.Reader, msg5)
+
+	msg1Hex := hex.EncodeToString(msg1)
+	msg2Hex := hex.EncodeToString(msg2)
+	msg3Hex := hex.EncodeToString(msg3)
+	msg4Hex := hex.EncodeToString(msg4)
+	msg5Hex := hex.EncodeToString(msg5)
+
+	msg1Int, _ := strconv.ParseInt(msg1Hex, 16, 64)
+	msg2Int, _ := strconv.ParseInt(msg2Hex, 16, 64)
+	msg3Int, _ := strconv.ParseInt(msg3Hex, 16, 64)
+	msg4Int, _ := strconv.ParseInt(msg4Hex, 16, 64)
+	msg5Int, _ := strconv.ParseInt(msg5Hex, 16, 64)
+	fmt.Println(msg1Int)
+	start = time.Now()
+	Sign(*big.NewInt(msg1Int), sk)
+	Sign(*big.NewInt(msg2Int), sk)
+	Sign(*big.NewInt(msg3Int), sk)
+	Sign(*big.NewInt(msg4Int), sk)
+	Sign(*big.NewInt(msg5Int), sk)
+	elapsed = time.Since(start)
+	fmt.Println("Time spent signing (no hash): ", elapsed)
+	fmt.Println("BitsPerSec = ", 10000/elapsed.Seconds())
+
 	// modify msg
 	modMsg := new(big.Int).Add(hash, big.NewInt(1))
 
@@ -147,8 +188,8 @@ func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 	m := new(big.Int).Exp(&s, pk.E, pk.N)
 
 	// if the original message is equal to the (de)signed message
-	// using the PK, the SK and PK most match, and therefore the it most be signed by
-	// whoever these keys belongs to
+	// using the PK, the SK and PK most match, and therefore it most be signed by
+	// the one the SK of this keypair belongs to
 	if m.Cmp(&msg) == 0 {
 		return true
 	}
@@ -157,6 +198,7 @@ func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 
 func makeSHA256(msg []byte) int64 {
 	hash := sha256.Sum256(msg)
+
 	// Convert to Hex
 	hashedHex := hex.EncodeToString(hash[:])
 	// ParseInt(string, base, bitSize), base is 16 since its hex, and bitSize 64 for int64
