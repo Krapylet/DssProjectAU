@@ -103,19 +103,16 @@ func main() {
 	msg := []byte("heeej")
 
 	// Make hash of msg
-	hash := makeSHA256(msg)
+	hash := big.NewInt(makeSHA256(msg))
 
-	// Create bigInt
-	msgBigInt := big.NewInt(hash)
-
-	s := Sign(*msgBigInt, sk)
+	s := Sign(*hash, sk)
 
 	// modify msg
-	modMsg := new(big.Int).Add(msgBigInt, big.NewInt(1))
+	modMsg := new(big.Int).Add(hash, big.NewInt(1))
 
 	v := Verify(*s, *modMsg, pk)
 
-	fmt.Println("msgInt: ", msgBigInt)
+	fmt.Println("msg: ", hash)
 	fmt.Println("Signed: ", s)
 	fmt.Println("Verified: ", v)
 }
