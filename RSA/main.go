@@ -117,11 +117,11 @@ func main() {
 	// modify msg
 	modMsg := new(big.Int).Add(hash, big.NewInt(1))
 
-	v := Verify(*s, *modMsg, pk)
-
 	fmt.Println("msg: ", hash)
+	fmt.Println("Modified msg: ", modMsg)
 	fmt.Println("Signed: ", s)
-	fmt.Println("Verified: ", v)
+	fmt.Println("Verified msg: ", Verify(*s, *hash, pk))
+	fmt.Println("Verified modMsg: ", Verify(*s, *modMsg, pk))
 }
 
 /*
