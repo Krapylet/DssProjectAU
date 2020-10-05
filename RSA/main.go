@@ -100,7 +100,7 @@ func Decrypt(sk SecretKey, cipher big.Int) *big.Int {
 
 func main() {
 
-	pk, sk := KeyGen(2048)
+	pk, sk := KeyGen(2000)
 
 	// 10 kB of random data
 	msg := make([]byte, 10000)
@@ -110,10 +110,12 @@ func main() {
 	// Make hash of msg
 	hash := big.NewInt(makeSHA256(msg))
 	elapsed := time.Since(start)
-	fmt.Println("Time elapsed: ", elapsed)
+	fmt.Println("Time spent hashing: ", elapsed)
 
+	start = time.Now()
 	s := Sign(*hash, sk)
-
+	elapsed = time.Since(start)
+	fmt.Println("Time spent signing: ", elapsed)
 	// modify msg
 	modMsg := new(big.Int).Add(hash, big.NewInt(1))
 
