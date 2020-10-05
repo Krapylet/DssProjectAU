@@ -104,12 +104,9 @@ func main() {
 
 	// Make hash of msg
 	hash := makeSHA256(msg)
-	// Get Hex representation of the hash
-	hashedHex := hex.EncodeToString(hash)
-	// ParseInt(string, base, bitSize), base is 16 since its hex, and bitSize 64 for int64
-	hashedInt, _ := strconv.ParseInt(hashedHex, 16, 64)
+
 	// Create bigInt
-	msgBigInt := big.NewInt(hashedInt)
+	msgBigInt := big.NewInt(hash)
 
 	s := Sign(*msgBigInt, sk)
 
@@ -152,7 +149,11 @@ func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 	return false
 }
 
-func makeSHA256(msg []byte) []byte {
-	h := sha256.Sum256(msg)
-	return h[:]
+func makeSHA256(msg []byte) int64 {
+	hash := sha256.Sum256(msg)
+	// Convert to Hex
+	hashedHex := hex.EncodeToString(hash[:])
+	// ParseInt(string, base, bitSize), base is 16 since its hex, and bitSize 64 for int64
+	hashedInt, _ := strconv.ParseInt(hashedHex, 16, 64)
+	return hashedInt
 }
