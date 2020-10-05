@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math/big"
 	"strconv"
+	"time"
 )
 
 type PublicKey struct {
@@ -100,10 +102,15 @@ func main() {
 
 	pk, sk := KeyGen(2048)
 
-	msg := []byte("heeej")
+	// 10 kB of random data
+	msg := make([]byte, 10000)
+	io.ReadFull(rand.Reader, msg)
 
+	start := time.Now()
 	// Make hash of msg
 	hash := big.NewInt(makeSHA256(msg))
+	elapsed := time.Since(start)
+	fmt.Println("Time elapsed: ", elapsed)
 
 	s := Sign(*hash, sk)
 
