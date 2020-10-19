@@ -40,51 +40,8 @@ var ledger *account.Ledger = account.MakeLedger()
 var MessageIDCounter = 0
 
 func main() {
-	// Try to connect to existing Peer
-	// Ask for IP and Port
-	fmt.Println("Connect to IP...")
-	//remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	//remoteIP = strings.TrimSpace(remoteIP)
-	remoteIP := "127.0.0.1"
-	fmt.Println("Connect to port...")
-	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	remotePort = strings.TrimSpace(remotePort)
-
-	fmt.Println("Trying to connect to: " + remoteIP + ":" + remotePort)
-	hostConn, _ := net.Dial("tcp", remoteIP+":"+remotePort)
-
-	if hostConn == nil {
-		fmt.Println("No existing peer found at: " + remoteIP + ":" + remotePort)
-
-		// Give ip and port of where to listen for TCP connections
-		myIP := "127.0.0.1"
-		myPort := "20000"
-
-		// Set myAddress
-		myAddress = myIP + ":" + myPort
-
-		// add yourself to known peers on the network
-		addresses = append(addresses, myIP+":"+myPort)
-
-	} else {
-		fmt.Println("Connection Established!")
-		defer hostConn.Close()
-
-		// Receive message from your host
-		go receiveMessage(hostConn)
-
-		//Before the client has been assigned a popper port, says it has port NEW. Messages from NEW ports are never put into MessagesSeen
-		myAddress = "127.0.0.1:NEW"
-
-		// Get the list of all peers from host
-		// Send message to request it...
-		fmt.Println("Requesting List...")
-		SendMessage("GETPEERLIST", "", hostConn)
-		// wait until connection list is received
-		for !gotConnsList {
-			time.Sleep(time.Second)
-		}
-	}
+	// Tries to connect, otherwise start own connection at port 20000
+	connect()
 
 	// Listen for incoming TCP connections
 	// Split, 0 = ip, 1 = port
@@ -161,10 +118,59 @@ func main() {
 	}
 }
 
+// Initial connect
+func connect() {
+	// Try to connect to existing Peer
+	// Ask for IP and Port
+	fmt.Println("Connect to IP...")
+	//remoteIP, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	//remoteIP = strings.TrimSpace(remoteIP)
+	remoteIP := "127.0.0.1"
+	fmt.Println("Connect to port...")
+	remotePort, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	remotePort = strings.TrimSpace(remotePort)
+
+	fmt.Println("Trying to connect to: " + remoteIP + ":" + remotePort)
+	hostConn, _ := net.Dial("tcp", remoteIP+":"+remotePort)
+
+	if hostConn == nil {
+		fmt.Println("No existing peer found at: " + remoteIP + ":" + remotePort)
+
+		// Give ip and port of where to listen for TCP connections
+		myIP := "127.0.0.1"
+		myPort := "20000"
+
+		// Set myAddress
+		myAddress = myIP + ":" + myPort
+
+		// add yourself to known peers on the network
+		addresses = append(addresses, myIP+":"+myPort)
+
+	} else {
+		fmt.Println("Connection Established!")
+		defer hostConn.Close()
+
+		// Receive message from your host
+		go receiveMessage(hostConn)
+
+		//Before the client has been assigned a popper port, says it has port NEW. Messages from NEW ports are never put into MessagesSeen
+		myAddress = "127.0.0.1:NEW"
+
+		// Get the list of all peers from host
+		// Send message to request it...
+		fmt.Println("Requesting List...")
+		SendMessage("GETPEERLIST", "", hostConn)
+		// wait until connection list is received
+		for !gotConnsList {
+			time.Sleep(time.Second)
+		}
+	}
+}
+
+// Listen for new tcp connections
 func tcpListener(myIP string, myPort string) {
 	// Open own port for incoming TCP
 	// Local IP
-
 	ln, err := net.Listen("tcp", ":"+myPort)
 	if err != nil {
 		fmt.Println("Error listening to: " + myPort)
@@ -185,7 +191,7 @@ func tcpListener(myIP string, myPort string) {
 	}
 }
 
-//Sends a new message to known peers. This increases the messageIDCounter
+// Sends a new message to known peers. This increases the messageIDCounter
 func SendMessageToAll(typeString string, msg interface{}) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
@@ -202,7 +208,7 @@ func SendMessageToAll(typeString string, msg interface{}) {
 	}
 }
 
-//forwards messages recieved to known peers without chaning it
+// forwards messages received to known peers without chaning it
 func forward(msg string) {
 	// write msg to all known connections
 	for i := range conns {
@@ -216,7 +222,7 @@ func SendMessage(typeString string, msg interface{}, conn net.Conn) {
 	marshalledMsg, _ := json.Marshal(msg)
 	// Calculate message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
-	//Prepend S to the message to show that it shouldn't be mapped
+	// Prepend S to the message to show that it shouldn't be mapped
 	combinedMsg := "S" + id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
 	println("<- type: " + typeString + ", to: " + conn.LocalAddr().String() + ", ID: " + myAddress)
 	// write msg to target connection
@@ -254,7 +260,7 @@ func receiveMessage(conn net.Conn) {
 		switch typeString {
 		// Request for list of all peers
 		case "GETPEERLIST":
-			// Recevied a request to get a list of known peers. Send list
+			// Received a request to get a list of known peers. Send list
 			SendMessage("PEERS", addresses, conn)
 			break
 		// List of of all peers
@@ -271,11 +277,11 @@ func receiveMessage(conn net.Conn) {
 
 			fmt.Println("Disconnection from host...")
 
-			//Disconnect from old holst
+			// Disconnect from old holst
 			SendMessage("DISCONNECT", "", conn)
 			removeConn(conn)
 
-			//Connect to new peers
+			// Connect to new peers
 			connectToPeers()
 			myAddress = addresses[len(addresses)-1]
 			gotConnsList = true
@@ -287,7 +293,7 @@ func receiveMessage(conn net.Conn) {
 			peerConn := conns[len(conns)-1]
 			SendMessage("GETALLTRANSACTIONS", "", peerConn)
 			break
-		// Nitification that a new peer has jouned the network
+		// Notification that a new peer has jouned the network
 		case "NEWCONNECTION":
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
@@ -341,7 +347,7 @@ func receiveMessage(conn net.Conn) {
 				ledger.Transaction(&t)
 			}
 			break
-		//a transaction
+		// A transaction
 		case "TRANSACTION":
 			// Unmarshal the transaction
 			var t account.Transaction
@@ -351,17 +357,17 @@ func receiveMessage(conn net.Conn) {
 			// Broadcast this transaction
 			forward(msgReceived)
 			break
-		//Recieve a disconnect message
+		// Receive a disconnect message
 		case "DISCONNECT":
-			//Remove connection from known connections
+			// Remove connection from known connections
 			removeConn(conn)
 
-			//Remove adress from known adresses
+			// Remove address from known addresses
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
 			removeAddress(address)
 
-			//Close connection
+			// Close connection
 			conn.Close()
 			break
 		}
@@ -394,30 +400,30 @@ func connectToPeers() {
 	}
 }
 
-//Removes a connection from the global array of connections
+// Removes a connection from the global array of connections
 func removeConn(conn net.Conn) {
-	//Create a temporary holder for valid connections
+	// Create a temporary holder for valid connections
 	var temp []net.Conn
-	//Copy all connections except the one we want to remove into temp
+	// Copy all connections except the one we want to remove into temp
 	for i := range conns {
 		if conns[i] != conn {
 			temp = append(temp, conns[i])
 		}
 	}
-	//Overwrite conns with temp
+	// Overwrite conns with temp
 	conns = temp
 }
 
-//Removes an adress from the global array of adresses
+// Removes an address from the global array of addresses
 func removeAddress(address string) {
-	//Create a temporary holder for valid connections
+	// Create a temporary holder for valid connections
 	var temp []string
-	//Copy all connections except the one we want to remove into temp
+	// Copy all connections except the one we want to remove into temp
 	for i := range addresses {
 		if addresses[i] != address {
 			temp = append(temp, addresses[i])
 		}
 	}
-	//Overwrite conns with temp
+	// Overwrite conns with temp
 	addresses = temp
 }
