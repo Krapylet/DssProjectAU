@@ -133,6 +133,12 @@ func main() {
 			// set signature
 			t.Signature = signature.String()
 
+			// check if its a valid amount
+			if ! (t.Amount > 0) {
+				fmt.Println("Invalid Transaction, amount most be positive")
+				continue
+			}
+
 
 			// try apply transaction
 			ledger.SignedTransaction(t)
