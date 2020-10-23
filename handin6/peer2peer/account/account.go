@@ -43,10 +43,10 @@ func (l *Ledger) Transaction(t *Transaction) {
 }
 
 type SignedTransaction struct {
-	ID string
-	From string
-	To string
-	Amount int
+	ID        string
+	From      string
+	To        string
+	Amount    int
 	Signature string
 }
 
@@ -55,7 +55,7 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) {
 	defer l.lock.Unlock()
 
 	validSignature := validateSignature(t)
-	fmt.Println("Transaction is:", validSignature)
+	fmt.Println("Transaction is valid:", validSignature)
 
 	if validSignature {
 		l.Accounts[t.From] -= t.Amount
@@ -82,8 +82,8 @@ func validateSignature(t *SignedTransaction) bool {
 
 func (l *Ledger) EncodePK(pk RSA.PublicKey) string {
 	pks = append(pks, pk)
-	index := strconv.Itoa(len(pks)-1)
-	return "user-"+index
+	index := strconv.Itoa(len(pks) - 1)
+	return "user-" + index
 }
 
 func decodePK(name string) RSA.PublicKey {
@@ -99,4 +99,3 @@ func (l *Ledger) GetPks() []RSA.PublicKey {
 func (l *Ledger) SetPks(newPks []RSA.PublicKey) {
 	pks = newPks
 }
-

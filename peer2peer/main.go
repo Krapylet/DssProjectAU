@@ -30,7 +30,7 @@ var MessagesSeen = make(map[string]bool)
 var MessagesSeenLock = new(sync.RWMutex)
 
 // Bool to determine if the tcp listener is running
-var tcpListenerRunning bool
+// var tcpListenerRunning bool
 
 // Bool to determine if the list of connections is received
 var gotConnsList bool
@@ -49,10 +49,10 @@ func main() {
 	go tcpListener(splitMyAddr[0], splitMyAddr[1])
 
 	// Wait for the TCP listener to run
-	for !tcpListenerRunning {
-		// wait 1 sec
-		time.Sleep(time.Second * 1)
-	}
+	//for !tcpListenerRunning {
+	//	// wait 1 sec
+	//	time.Sleep(time.Second * 1)
+	//}
 
 	// SendMessage uses the reader which blocks the TCP listener from starting or something :)
 	// so the tcp listener has to be started before running this
@@ -179,7 +179,7 @@ func tcpListener(myIP string, myPort string) {
 	defer ln.Close()
 
 	// TCP listener is running
-	tcpListenerRunning = true
+	// tcpListenerRunning = true
 	fmt.Println("LISTENING ON PORT -> " + myIP + ":" + myPort)
 	for {
 		conn, _ := ln.Accept()
