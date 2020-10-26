@@ -32,10 +32,13 @@ var MessagesSeenLock = new(sync.RWMutex)
 
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
+var listenerLock = new(sync.RWMutex)
 
 // Bool to determine if the list of connections is received
 var gotConnsList bool
+var connListLock = new(sync.RWMutex)
 var gotPKlist bool
+var pkListLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -235,7 +238,10 @@ func tcpListener(myIP string, myPort string) {
 	defer ln.Close()
 
 	// TCP listener is running
+	listenerLock.Lock()
 	tcpListenerRunning = true
+	listenerLock.Unlock()
+
 	fmt.Println("LISTENING ON PORT -> " + myIP + ":" + myPort)
 	for {
 		conn, _ := ln.Accept()
@@ -338,7 +344,10 @@ func receiveMessage(conn net.Conn) {
 			// Connect to new peers
 			connectToPeers()
 			myAddress = addresses[len(addresses)-1]
+
+			connListLock.Lock()
 			gotConnsList = true
+			connListLock.Unlock()
 
 			// Broadcast that you've connected
 			SendMessageToAll("NEWCONNECTION", myAddress)
@@ -436,7 +445,9 @@ func receiveMessage(conn net.Conn) {
 
 			myName = ledger.EncodePK(myPk)
 
+			pkListLock.Lock()
 			gotPKlist = true
+			pkListLock.Unlock()
 
 			// broadcast your pk
 			SendMessageToAll("NEWNAMEPK", myPk)
