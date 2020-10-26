@@ -106,6 +106,13 @@ func main() {
 			fmt.Println("-----------------")
 		}
 
+		if strings.Contains(msg, "!TESTPOS") {
+			posTest()
+		}
+		if strings.Contains(msg, "!TESTNEG") {
+			negTest()
+		}
+
 		var splitMsg []string = strings.Split(msg, " ")
 
 		//______________________TRANSACTION COMMAND___________________________
@@ -209,7 +216,7 @@ func connect() {
 		// Get Known names and pk's
 		fmt.Println("Requesting Name -> PK map...")
 		// ask a known conn for the PK LIST
-		SendMessage("GETPKLIST", "", conns[len(conns)-1])
+		SendMessage("GETPKMAP", "", conns[len(conns)-1])
 		for !gotPKlist {
 			time.Sleep(time.Second)
 		}
@@ -417,14 +424,12 @@ func receiveMessage(conn net.Conn) {
 			// Close connection
 			conn.Close()
 			break
-		case "GETPKLIST":
+		case "GETPKMAP":
 			// received request to get PK map
-			// SendMessage("PKMAP", namePK, conn)
-			SendMessage("PKLIST", ledger.GetPks(), conn)
+			SendMessage("PKMAP", ledger.GetPks(), conn)
 			break
-		case "PKLIST":
+		case "PKMAP":
 			// received the namePK map
-			//var newPKList []RSA.PublicKey
 			var newPKmap map[string]RSA.PublicKey
 			json.Unmarshal(marshalledMsg, &newPKmap)
 			ledger.SetPks(newPKmap)
@@ -496,4 +501,92 @@ func removeAddress(address string) {
 	}
 	// Overwrite conns with temp
 	addresses = temp
+}
+
+// Automatic test for testing valid SignedTransactions
+func posTest() {
+	fmt.Println()
+	fmt.Println("--- TESTING VALID SIGNED TRANSACTIONS ---")
+	pkMap := ledger.GetPks()
+
+	fmt.Println()
+	fmt.Println("-- sending 100 to each account from my account --")
+	// Send 100 to each known peer from your own account.
+	for name, _ := range pkMap {
+		// skip your own account
+		if name == myName {
+			continue
+		}
+		// create a signed transaction
+		t := new(account.SignedTransaction)
+		t.Amount = 100
+		t.From = myName
+		t.To = name
+		// encode transaction as a byte array
+		toSign, _ := json.Marshal(t)
+		// Create big int from this
+		toSignBig := new(big.Int).SetBytes(toSign)
+		// Sign using SK
+		signature := RSA.Sign(*toSignBig, mySk)
+		// set signature
+		t.Signature = signature.String()
+		// apply locally
+		ledger.SignedTransaction(t)
+		// Broadcast
+		SendMessageToAll("TRANSACTION", t)
+	}
+
+	// Print the ledger values
+	fmt.Println()
+	fmt.Println("-- OUTPUT FROM TRANSACTIONS --")
+	fmt.Println("--- MY LEDGER ---")
+	for key, value := range ledger.Accounts {
+		fmt.Println(key + ": " + strconv.Itoa(value))
+	}
+	fmt.Println("-----------------")
+	fmt.Println()
+}
+
+// Try to send 100 from an account that is not yours
+func negTest() {
+	fmt.Println()
+	fmt.Println("--- TESTING INVALID SIGNED TRANSACTIONS ---")
+
+	pkMap := ledger.GetPks()
+
+	fmt.Println()
+	fmt.Println("-- sending 100 to my own account from each other account --")
+	for name, _ := range pkMap {
+		// skip your own account
+		if name == myName {
+			continue
+		}
+		// create a signed transaction
+		t := new(account.SignedTransaction)
+		t.Amount = 100
+		t.From = name
+		t.To = myName
+		// encode transaction as a byte array
+		toSign, _ := json.Marshal(t)
+		// Create big int from this
+		toSignBig := new(big.Int).SetBytes(toSign)
+		// Sign using SK
+		signature := RSA.Sign(*toSignBig, mySk)
+		// set signature
+		t.Signature = signature.String()
+		// apply locally
+		ledger.SignedTransaction(t)
+		// Broadcast
+		SendMessageToAll("TRANSACTION", t)
+	}
+	// Print the ledger values
+	fmt.Println()
+	fmt.Println("-- OUTPUT FROM TRANSACTIONS --")
+	fmt.Println("--- MY LEDGER ---")
+	for key, value := range ledger.Accounts {
+		fmt.Println(key + ": " + strconv.Itoa(value))
+	}
+	fmt.Println("-----------------")
+	fmt.Println()
+
 }
