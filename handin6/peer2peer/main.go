@@ -104,8 +104,11 @@ func main() {
 		}
 
 		if strings.Contains(msg, "!P") {
-			fmt.Println("--- MY PKS ---")
-			fmt.Println(ledger.GetPks())
+			fmt.Println("--- KKNOWN PKS ---")
+			var pks = ledger.GetPks()
+			for encodedKey := range pks {
+				fmt.Println(encodedKey)
+			}
 			fmt.Println("-----------------")
 		}
 
