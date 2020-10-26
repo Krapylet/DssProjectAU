@@ -36,15 +36,19 @@ var gotConnsList bool
 var gotPKmap bool
 
 // Mutexes
+var addressesLock = new(sync.RWMutex)
+var connsLock = new(sync.RWMutex)
+var msgIDCounterLock = new(sync.RWMutex)
+var myAddressLock = new(sync.RWMutex)
 var MessagesSeenLock = new(sync.RWMutex)
 var listenerLock = new(sync.RWMutex)
-var connsListLock = new(sync.RWMutex)
-var pkMapLock = new(sync.RWMutex)
+var gotConnsListLock = new(sync.RWMutex)
+var gotPkMapLock = new(sync.RWMutex)
 
 // Conditions for locks
 var listenerCond = sync.NewCond(listenerLock.RLocker())
-var connsListCond = sync.NewCond(connsListLock.RLocker())
-var pkMapCond = sync.NewCond(pkMapLock.RLocker())
+var gotConnsListCond = sync.NewCond(gotConnsListLock.RLocker())
+var pkMapCond = sync.NewCond(gotPkMapLock.RLocker())
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -63,7 +67,9 @@ func main() {
 
 	// Listen for incoming TCP connections
 	// Split, 0 = ip, 1 = port
+	myAddressLock.RLock()
 	splitMyAddr := strings.Split(myAddress, ":")
+	myAddressLock.RUnlock()
 	go tcpListener(splitMyAddr[0], splitMyAddr[1])
 
 	listenerLock.RLock()
@@ -85,16 +91,22 @@ func main() {
 		//_________________DEBUG COMMANDS__________________
 		if strings.Contains(msg, "!A") {
 			fmt.Println("--- KNOWN LISTENERS ---")
+			myAddressLock.RLock()
 			fmt.Println("(I LISTEN ON: " + myAddress + ")")
+			myAddressLock.RUnlock()
+			addressesLock.RLock()
 			for i := range addresses {
 				fmt.Println("-" + addresses[i])
 			}
+			addressesLock.RUnlock()
 		}
 		if strings.Contains(msg, "!C") {
 			fmt.Println("--- MY CONS ---")
+			connsLock.RLock()
 			for i := range conns {
 				fmt.Println("-" + conns[i].RemoteAddr().String())
 			}
+			connsLock.RUnlock()
 		}
 
 		if strings.Contains(msg, "!L") {
@@ -112,7 +124,7 @@ func main() {
 		}
 
 		if strings.Contains(msg, "!P") {
-			fmt.Println("--- KKNOWN PKS ---")
+			fmt.Println("--- KNOWN PKS ---")
 			var pks = ledger.GetPks()
 			for encodedKey := range pks {
 				fmt.Println(encodedKey)
@@ -141,7 +153,12 @@ func main() {
 
 			var t *account.SignedTransaction = new(account.SignedTransaction)
 			// set values from input
+			myAddressLock.RLock()
+			msgIDCounterLock.RLock()
 			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+			myAddressLock.RUnlock()
+			msgIDCounterLock.RUnlock()
+
 			t.Amount, _ = strconv.Atoi(splitMsg[1])
 			t.From = splitMsg[2]
 			t.To = strings.TrimSpace(splitMsg[3])
@@ -174,7 +191,9 @@ func main() {
 		var isQuitCommand bool = splitMsg[0] == "QUIT"
 		if isQuitCommand {
 			println("Quitting")
+			myAddressLock.RLock()
 			SendMessageToAll("DISCONNECT", myAddress)
+			myAddressLock.RUnlock()
 			break
 		}
 	}
@@ -201,10 +220,14 @@ func connect() {
 		myPort := "20000"
 
 		// Set myAddress
+		myAddressLock.Lock()
 		myAddress = myIP + ":" + myPort
+		myAddressLock.Unlock()
 
 		// add yourself to known peers on the network
+		addressesLock.Lock()
 		addresses = append(addresses, myIP+":"+myPort)
+		addressesLock.Unlock()
 		// adds your pk to ledger pks list and returns your name
 		myName = ledger.EncodePK(myPk)
 
@@ -216,30 +239,34 @@ func connect() {
 		go receiveMessage(hostConn)
 
 		//Before the client has been assigned a popper port, says it has port NEW. Messages from NEW ports are never put into MessagesSeen
+		myAddressLock.Lock()
 		myAddress = "127.0.0.1:NEW"
+		myAddressLock.Unlock()
 
 		// Send message to request it...
 		fmt.Println("Requesting List...")
 		SendMessage("GETPEERLIST", "", hostConn)
 
 		// wait until connection list is received
-		connsListLock.RLock()
+		gotConnsListLock.RLock()
 		for !gotConnsList {
-			connsListCond.Wait()
-			connsListLock.RUnlock()
+			gotConnsListCond.Wait()
+			gotConnsListLock.RUnlock()
 		}
 
 		// Get the list of all peers from host
 		// Get Known names and pk's
 		fmt.Println("Requesting Name -> PK map...")
 		// ask a known conn for the PK LIST
+		connsLock.RLock()
 		SendMessage("GETPKMAP", "", conns[len(conns)-1])
+		connsLock.RUnlock()
 
 		// wait till received
-		pkMapLock.RLock()
+		gotPkMapLock.RLock()
 		for !gotPKmap {
 			pkMapCond.Wait()
-			pkMapLock.RUnlock()
+			gotPkMapLock.RUnlock()
 		}
 	}
 }
@@ -266,7 +293,9 @@ func tcpListener(myIP string, myPort string) {
 		conn, _ := ln.Accept()
 		fmt.Println("Got a new connection from: " + conn.RemoteAddr().String())
 		// New active connection
+		connsLock.Lock()
 		conns = append(conns, conn)
+		connsLock.Unlock()
 		// Setup message receiver for each new connection
 		go receiveMessage(conn)
 	}
@@ -277,36 +306,56 @@ func SendMessageToAll(typeString string, msg interface{}) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
 	// Calculate the message ID
+	myAddressLock.RLock()
+	msgIDCounterLock.RLock()
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+	myAddressLock.RUnlock()
+	msgIDCounterLock.RUnlock()
+
+	msgIDCounterLock.Lock()
 	MessageIDCounter++
+	msgIDCounterLock.Unlock()
 
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
 	// Insert message into map of known messages
 	MessagesSeen[combinedMsg] = true
+	myAddressLock.RLock()
 	println("<< type: " + typeString + ", ID: " + myAddress)
+	myAddressLock.RUnlock()
 	// write msg to all known connections
+	connsLock.RLock()
 	for i := range conns {
 		conns[i].Write([]byte(combinedMsg))
 	}
+	connsLock.RUnlock()
 }
 
 // forwards messages received to known peers without chaning it
 func forward(msg string) {
 	// write msg to all known connections
+	connsLock.RLock()
 	for i := range conns {
 		conns[i].Write([]byte(msg))
 	}
+	connsLock.RUnlock()
 }
 
 //Sends a message to a single peer. Only used for special purposes such as initialization. The same message can be sent multiple times
 func SendMessage(typeString string, msg interface{}, conn net.Conn) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
+
+	myAddressLock.RLock()
+	myAddr := myAddress
+	myAddressLock.RUnlock()
+
 	// Calculate message ID
-	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+	msgIDCounterLock.RLock()
+	var id string = myAddr + ":" + strconv.Itoa(MessageIDCounter)
+	msgIDCounterLock.RUnlock()
 	// Prepend S to the message to show that it shouldn't be mapped
 	combinedMsg := "S" + id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
-	println("<- type: " + typeString + ", to: " + conn.LocalAddr().String() + ", ID: " + myAddress)
+	println("<- type: " + typeString + ", to: " + conn.LocalAddr().String() + ", ID: " + myAddr)
 	// write msg to target connection
 	conn.Write([]byte(combinedMsg))
 }
@@ -351,9 +400,11 @@ func receiveMessage(conn net.Conn) {
 				fmt.Print("Could not unmarshal at PEERS..., " + err.Error())
 			}
 
+			addressesLock.Lock()
 			addresses = peerList
 
 			addresses = append(addresses, conn.LocalAddr().String())
+			addressesLock.Unlock()
 
 			fmt.Println("Disconnection from host...")
 
@@ -363,18 +414,26 @@ func receiveMessage(conn net.Conn) {
 
 			// Connect to new peers
 			connectToPeers()
+			myAddressLock.RLock()
+			addressesLock.RLock()
 			myAddress = addresses[len(addresses)-1]
+			myAddressLock.RUnlock()
+			addressesLock.RUnlock()
 
-			connsListLock.Lock()
+			gotConnsListLock.Lock()
 			gotConnsList = true
-			connsListLock.Unlock()
-			connsListCond.Signal()
+			gotConnsListLock.Unlock()
+			gotConnsListCond.Signal()
 
 			// Broadcast that you've connected
+			myAddressLock.RLock()
 			SendMessageToAll("NEWCONNECTION", myAddress)
+			myAddressLock.RUnlock()
 
 			// Ask a peer for previous transactions
+			connsLock.RLock()
 			peerConn := conns[len(conns)-1]
+			connsLock.RUnlock()
 			SendMessage("GETALLTRANSACTIONS", "", peerConn)
 			break
 		// Notification that a new peer has joined the network
@@ -382,10 +441,12 @@ func receiveMessage(conn net.Conn) {
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
 			// check if the address is already known by this peer
+			addressesLock.Lock()
 			if !strings.Contains(strings.Join(addresses, ","), address) {
 				// Not known, so add to list of addresses
 				addresses = append(addresses, address)
 			}
+			addressesLock.Unlock()
 			// Send the message to all the known connections of this peer too
 			forward(msgReceived)
 			break
@@ -465,9 +526,9 @@ func receiveMessage(conn net.Conn) {
 
 			myName = ledger.EncodePK(myPk)
 
-			pkMapLock.Lock()
+			gotPkMapLock.Lock()
 			gotPKmap = true
-			pkMapLock.Unlock()
+			gotPkMapLock.Unlock()
 			pkMapCond.Signal()
 
 			// broadcast your pk
@@ -485,18 +546,26 @@ func connectToPeers() {
 	// connect to, up to 10 newest connections, excluding your host
 	connCounter := 0
 	// Gets the last position in addresses which are not yourself
+	addressesLock.RLock()
 	pos := len(addresses) - 2
+	addressesLock.RUnlock()
 	for connCounter < 10 && pos >= 0 {
 		// Makes sure we dont connect to our host again...
 		// Try to connect to peer
+		addressesLock.RLock()
 		conn, _ := net.Dial("tcp", addresses[pos])
+		addressesLock.RUnlock()
 
 		if conn == nil {
+			addressesLock.RLock()
 			fmt.Println("Failed to connect to: " + addresses[pos])
+			addressesLock.RUnlock()
 		} else {
 			fmt.Println("Connection established with: " + conn.RemoteAddr().String())
 			// Add connection to active connections
+			connsLock.Lock()
 			conns = append(conns, conn)
+			connsLock.Unlock()
 			// Setup message receiver for this conn
 			go receiveMessage(conn)
 		}
@@ -512,13 +581,17 @@ func removeConn(conn net.Conn) {
 	// Create a temporary holder for valid connections
 	var temp []net.Conn
 	// Copy all connections except the one we want to remove into temp
+	connsLock.RLock()
 	for i := range conns {
 		if conns[i] != conn {
 			temp = append(temp, conns[i])
 		}
 	}
+	connsLock.RUnlock()
 	// Overwrite conns with temp
+	connsLock.Lock()
 	conns = temp
+	connsLock.Unlock()
 }
 
 // Removes an address from the global array of addresses
@@ -526,13 +599,17 @@ func removeAddress(address string) {
 	// Create a temporary holder for valid connections
 	var temp []string
 	// Copy all connections except the one we want to remove into temp
+	addressesLock.RLock()
 	for i := range addresses {
 		if addresses[i] != address {
 			temp = append(temp, addresses[i])
 		}
 	}
-	// Overwrite conns with temp
+	addressesLock.RUnlock()
+	// Overwrite addresses with temp
+	addressesLock.Lock()
 	addresses = temp
+	addressesLock.Unlock()
 }
 
 // Automatic test for testing valid SignedTransactions
