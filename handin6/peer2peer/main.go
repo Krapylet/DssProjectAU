@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 // String containing your ip and port "ip:port"
@@ -27,18 +26,25 @@ var addresses []string
 // MessagesSeen Set of all messages sent
 var MessagesSeen = make(map[string]bool)
 
-// MessagesSeenLock makes sure the map isnt written to and read from at the same time
-var MessagesSeenLock = new(sync.RWMutex)
-
 // Bool to determine if the tcp listener is running
 var tcpListenerRunning bool
-var listenerLock = new(sync.RWMutex)
 
-// Bool to determine if the list of connections is received
+// Flag for when list of connections is received
 var gotConnsList bool
-var connListLock = new(sync.RWMutex)
-var gotPKlist bool
-var pkListLock = new(sync.RWMutex)
+
+// Flag for when PKMap is received
+var gotPKmap bool
+
+// Mutexes
+var MessagesSeenLock = new(sync.RWMutex)
+var listenerLock = new(sync.RWMutex)
+var connsListLock = new(sync.RWMutex)
+var pkMapLock = new(sync.RWMutex)
+
+// Conditions for locks
+var listenerCond = sync.NewCond(listenerLock.RLocker())
+var connsListCond = sync.NewCond(connsListLock.RLocker())
+var pkMapCond = sync.NewCond(pkMapLock.RLocker())
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -60,8 +66,10 @@ func main() {
 	splitMyAddr := strings.Split(myAddress, ":")
 	go tcpListener(splitMyAddr[0], splitMyAddr[1])
 
-	if !tcpListenerRunning {
-		time.Sleep(time.Second)
+	listenerLock.RLock()
+	for !tcpListenerRunning {
+		listenerCond.Wait()
+		listenerLock.RUnlock()
 	}
 
 	// make transactions
@@ -213,9 +221,12 @@ func connect() {
 		// Send message to request it...
 		fmt.Println("Requesting List...")
 		SendMessage("GETPEERLIST", "", hostConn)
+
 		// wait until connection list is received
+		connsListLock.RLock()
 		for !gotConnsList {
-			time.Sleep(time.Second)
+			connsListCond.Wait()
+			connsListLock.RUnlock()
 		}
 
 		// Get the list of all peers from host
@@ -223,8 +234,12 @@ func connect() {
 		fmt.Println("Requesting Name -> PK map...")
 		// ask a known conn for the PK LIST
 		SendMessage("GETPKMAP", "", conns[len(conns)-1])
-		for !gotPKlist {
-			time.Sleep(time.Second)
+
+		// wait till received
+		pkMapLock.RLock()
+		for !gotPKmap {
+			pkMapCond.Wait()
+			pkMapLock.RUnlock()
 		}
 	}
 }
@@ -244,6 +259,7 @@ func tcpListener(myIP string, myPort string) {
 	listenerLock.Lock()
 	tcpListenerRunning = true
 	listenerLock.Unlock()
+	listenerCond.Signal()
 
 	fmt.Println("LISTENING ON PORT -> " + myIP + ":" + myPort)
 	for {
@@ -263,6 +279,7 @@ func SendMessageToAll(typeString string, msg interface{}) {
 	// Calculate the message ID
 	var id string = myAddress + ":" + strconv.Itoa(MessageIDCounter)
 	MessageIDCounter++
+
 	combinedMsg := id + ";" + typeString + ";" + string(marshalledMsg) + "\n"
 	// Insert message into map of known messages
 	MessagesSeen[combinedMsg] = true
@@ -348,9 +365,10 @@ func receiveMessage(conn net.Conn) {
 			connectToPeers()
 			myAddress = addresses[len(addresses)-1]
 
-			connListLock.Lock()
+			connsListLock.Lock()
 			gotConnsList = true
-			connListLock.Unlock()
+			connsListLock.Unlock()
+			connsListCond.Signal()
 
 			// Broadcast that you've connected
 			SendMessageToAll("NEWCONNECTION", myAddress)
@@ -363,7 +381,6 @@ func receiveMessage(conn net.Conn) {
 		case "NEWCONNECTION":
 			var address string
 			json.Unmarshal(marshalledMsg, &address)
-
 			// check if the address is already known by this peer
 			if !strings.Contains(strings.Join(addresses, ","), address) {
 				// Not known, so add to list of addresses
@@ -448,9 +465,10 @@ func receiveMessage(conn net.Conn) {
 
 			myName = ledger.EncodePK(myPk)
 
-			pkListLock.Lock()
-			gotPKlist = true
-			pkListLock.Unlock()
+			pkMapLock.Lock()
+			gotPKmap = true
+			pkMapLock.Unlock()
+			pkMapCond.Signal()
 
 			// broadcast your pk
 			SendMessageToAll("NEWNAMEPK", myPk)

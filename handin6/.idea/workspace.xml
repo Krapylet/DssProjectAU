@@ -19,7 +19,7 @@
     <select />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2784866c-d724-4bc4-9c3e-75f9a5d384e0" name="Default Changelist" comment="handin6 automatic tests">
+    <list default="true" id="2784866c-d724-4bc4-9c3e-75f9a5d384e0" name="Default Changelist" comment="some locks">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/peer2peer/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/peer2peer/main.go" afterDir="false" />
     </list>
@@ -93,29 +93,30 @@
     <MESSAGE value="handin6" />
     <MESSAGE value="pks encoded with sha now" />
     <MESSAGE value="handin6 automatic tests" />
-    <option name="LAST_COMMIT_MESSAGE" value="handin6 automatic tests" />
+    <MESSAGE value="some locks" />
+    <option name="LAST_COMMIT_MESSAGE" value="some locks" />
   </component>
   <component name="WindowStateProjectService">
-    <state width="1590" height="229" key="GridCell.Tab.0.bottom" timestamp="1603458897333">
+    <state width="1590" height="229" key="GridCell.Tab.0.bottom" timestamp="1603722459376">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="229" key="GridCell.Tab.0.bottom/48.23.1632.1027@48.23.1632.1027" timestamp="1603458897333" />
-    <state width="1590" height="229" key="GridCell.Tab.0.center" timestamp="1603458897332">
+    <state width="1590" height="229" key="GridCell.Tab.0.bottom/48.23.1632.1027@48.23.1632.1027" timestamp="1603722459376" />
+    <state width="1590" height="229" key="GridCell.Tab.0.center" timestamp="1603722459375">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="229" key="GridCell.Tab.0.center/48.23.1632.1027@48.23.1632.1027" timestamp="1603458897332" />
-    <state width="1590" height="229" key="GridCell.Tab.0.left" timestamp="1603458897331">
+    <state width="1590" height="229" key="GridCell.Tab.0.center/48.23.1632.1027@48.23.1632.1027" timestamp="1603722459375" />
+    <state width="1590" height="229" key="GridCell.Tab.0.left" timestamp="1603722459374">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="229" key="GridCell.Tab.0.left/48.23.1632.1027@48.23.1632.1027" timestamp="1603458897331" />
-    <state width="1590" height="229" key="GridCell.Tab.0.right" timestamp="1603458897332">
+    <state width="1590" height="229" key="GridCell.Tab.0.left/48.23.1632.1027@48.23.1632.1027" timestamp="1603722459374" />
+    <state width="1590" height="229" key="GridCell.Tab.0.right" timestamp="1603722459376">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="229" key="GridCell.Tab.0.right/48.23.1632.1027@48.23.1632.1027" timestamp="1603458897332" />
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1603715030926">
+    <state width="1590" height="229" key="GridCell.Tab.0.right/48.23.1632.1027@48.23.1632.1027" timestamp="1603722459376" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1603716513992">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1603715030926" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1603716513992" />
     <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1603710238237">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
