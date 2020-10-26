@@ -41,12 +41,9 @@ var ledger *account.Ledger = account.MakeLedger()
 
 var MessageIDCounter = 0
 
-
-
 var myName string
 var myPk RSA.PublicKey
 var mySk RSA.SecretKey
-
 
 func main() {
 	// generate RSA Key
@@ -109,13 +106,18 @@ func main() {
 			fmt.Println("-----------------")
 		}
 
-
 		var splitMsg []string = strings.Split(msg, " ")
 
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND 'amount' 'from' 'to'"
 		var isSendCommand bool = splitMsg[0] == "SEND"
 		if isSendCommand {
+
+			if len(splitMsg) != 4 {
+				fmt.Println("Invalid SEND command")
+				continue
+			}
+
 			var t *account.SignedTransaction = new(account.SignedTransaction)
 			// set values from input
 			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
@@ -134,11 +136,10 @@ func main() {
 			t.Signature = signature.String()
 
 			// check if its a valid amount
-			if ! (t.Amount > 0) {
+			if !(t.Amount > 0) {
 				fmt.Println("Invalid Transaction, amount most be positive")
 				continue
 			}
-
 
 			// try apply transaction
 			ledger.SignedTransaction(t)
@@ -423,9 +424,10 @@ func receiveMessage(conn net.Conn) {
 			break
 		case "PKLIST":
 			// received the namePK map
-			var newPKList []RSA.PublicKey
-			json.Unmarshal(marshalledMsg, &newPKList)
-			ledger.SetPks(newPKList)
+			//var newPKList []RSA.PublicKey
+			var newPKmap map[string]RSA.PublicKey
+			json.Unmarshal(marshalledMsg, &newPKmap)
+			ledger.SetPks(newPKmap)
 
 			myName = ledger.EncodePK(myPk)
 
@@ -495,6 +497,3 @@ func removeAddress(address string) {
 	// Overwrite conns with temp
 	addresses = temp
 }
-
-
-

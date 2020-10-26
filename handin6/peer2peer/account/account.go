@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strconv"
-	"strings"
 	"sync"
 )
 
-var pks []RSA.PublicKey
+var pksMap = make(map[string]RSA.PublicKey)
 
 // Ledger type
 type Ledger struct {
@@ -72,30 +70,37 @@ func validateSignature(t *SignedTransaction) bool {
 	marshTransaction, _ := json.Marshal(t)
 	// convert to big int
 	bigIntTransaction := new(big.Int).SetBytes(marshTransaction)
-	// Verify that using the from's PK, the signature is equal to the marshalled transaction with no signature
 
 	// Put signature back into t
 	t.Signature = signature.String()
 
+	// Verify that using the from's PK, the signature is equal to the marshalled transaction with no signature
 	return RSA.Verify(*signature, *bigIntTransaction, decodePK(t.From))
 }
 
 func (l *Ledger) EncodePK(pk RSA.PublicKey) string {
-	pks = append(pks, pk)
-	index := strconv.Itoa(len(pks) - 1)
-	return "user-" + index
+
+	name := RSA.MakeSHA256Hex([]byte(pk.N.String()))
+	pksMap[name] = pk
+
+	return name
 }
 
 func decodePK(name string) RSA.PublicKey {
-	splitName := strings.Split(name, "-")
-	index, _ := strconv.Atoi(splitName[1])
-	return pks[index]
+	if val, inMap := pksMap[name]; inMap {
+		return val
+	}
+	// create a dummy public key with N = 0, E = 0
+	temp := new(RSA.PublicKey)
+	temp.N = big.NewInt(0)
+	temp.E = big.NewInt(0)
+	return *temp
 }
 
-func (l *Ledger) GetPks() []RSA.PublicKey {
-	return pks
+func (l *Ledger) GetPks() map[string]RSA.PublicKey {
+	return pksMap
 }
 
-func (l *Ledger) SetPks(newPks []RSA.PublicKey) {
-	pks = newPks
+func (l *Ledger) SetPks(newPks map[string]RSA.PublicKey) {
+	pksMap = newPks
 }

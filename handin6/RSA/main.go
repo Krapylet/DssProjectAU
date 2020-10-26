@@ -133,3 +133,11 @@ func MakeSHA256(msg []byte) int64 {
 	hashedInt, _ := strconv.ParseInt(hashedHex, 16, 64)
 	return hashedInt
 }
+
+func MakeSHA256Hex(msg []byte) string {
+	hash := sha256.Sum256(msg)
+
+	// Convert to Hex
+	hashedHex := hex.EncodeToString(hash[:])
+	return hashedHex
+}
