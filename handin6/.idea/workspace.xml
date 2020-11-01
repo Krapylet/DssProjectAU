@@ -19,9 +19,8 @@
     <select />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="2784866c-d724-4bc4-9c3e-75f9a5d384e0" name="Default Changelist" comment="no more races">
+    <list default="true" id="2784866c-d724-4bc4-9c3e-75f9a5d384e0" name="Default Changelist" comment="deadlock fix">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/peer2peer/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,7 +95,8 @@
     <MESSAGE value="some locks" />
     <MESSAGE value="some races fixed" />
     <MESSAGE value="no more races" />
-    <option name="LAST_COMMIT_MESSAGE" value="no more races" />
+    <MESSAGE value="deadlock fix" />
+    <option name="LAST_COMMIT_MESSAGE" value="deadlock fix" />
   </component>
   <component name="WindowStateProjectService">
     <state width="1590" height="229" key="GridCell.Tab.0.bottom" timestamp="1603726462685">
@@ -115,10 +115,10 @@
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
     <state width="1590" height="229" key="GridCell.Tab.0.right/48.23.1632.1027@48.23.1632.1027" timestamp="1603726462684" />
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1603725992790">
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1603807203222">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1603725992790" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1603807203222" />
     <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1603722993432">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
