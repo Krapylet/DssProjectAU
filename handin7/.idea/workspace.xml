@@ -19,13 +19,9 @@
     <select />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="928c929b-e4f2-4f47-9aec-87b234e83120" name="Default Changelist" comment="pos and neg test">
-      <change beforePath="$PROJECT_DIR$/peer2peer/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/.idea/peer2peer.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/.idea/workspace.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/account/account.go" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/main.go" beforeDir="false" />
+    <list default="true" id="928c929b-e4f2-4f47-9aec-87b234e83120" name="Default Changelist" comment="handin7">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/testHandin7.go" beforeDir="false" afterPath="$PROJECT_DIR$/testHandin7.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -113,7 +109,8 @@
     <MESSAGE value="bcrypt" />
     <MESSAGE value="commonly used args" />
     <MESSAGE value="pos and neg test" />
-    <option name="LAST_COMMIT_MESSAGE" value="pos and neg test" />
+    <MESSAGE value="handin7" />
+    <option name="LAST_COMMIT_MESSAGE" value="handin7" />
   </component>
   <component name="WindowStateProjectService">
     <state width="1590" height="293" key="GridCell.Tab.0.bottom" timestamp="1604329014020">
@@ -136,10 +133,10 @@
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
     <state x="211" y="115" key="MergeDialog/48.23.1632.1027@48.23.1632.1027" timestamp="1604326472277" />
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1604329051903">
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1604329428046">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604329051903" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604329428046" />
     <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1604329413640">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>

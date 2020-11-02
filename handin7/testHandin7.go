@@ -3,15 +3,20 @@ package main
 import (
 	"./RSA"
 	"./softwarewallet"
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
 )
 
 func main() {
+	// automated tests
 	testpos()
-
 	testneg()
+
+	// manual test
+	// manual()
 }
 
 func testpos() {
@@ -67,4 +72,28 @@ func testneg() {
 	password = "Wr0ngP4ssw0rd"
 	fmt.Println(" - Password: " + password)
 	softwarewallet.Sign(filename, password, []byte(msg))
+}
+
+func manual() {
+	fmt.Println("Generate a file...")
+	fmt.Print("Filename > ")
+	filename, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	fmt.Print("Password > ")
+	password, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+
+	jsonPK := softwarewallet.Generate(filename, password)
+	var pk RSA.PublicKey
+	json.Unmarshal([]byte(jsonPK), &pk)
+
+	fmt.Println("Generate a signature...")
+	fmt.Print("Filename > ")
+	filename, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	fmt.Print("Password > ")
+	password, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	fmt.Print("MsgToSign > ")
+	msg, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+
+	signature := softwarewallet.Sign(filename, password, []byte(msg))
+
+	fmt.Println("Generated signature is: " + signature)
 }
