@@ -44,7 +44,7 @@ func EncryptToFile(fileName string, msg []byte, key []byte) {
 	cipherText := make([]byte, len(msg))
 
 	// make the initialization vector and fill it with random bytes
-	// the iv most have the same length as the block size
+	// the iv must have the same length as the block size
 	iv = make([]byte, myBlock.BlockSize())
 	_, err := io.ReadFull(rand.Reader, iv)
 
