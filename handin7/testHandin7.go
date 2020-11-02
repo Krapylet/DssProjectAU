@@ -1,41 +1,37 @@
 package main
 
 import (
-	"./peer2peer/softwarewallet"
 	"./RSA"
+	"./softwarewallet"
+	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 )
 
 func main() {
-
+	fmt.Println("--- TESTING SOFTWAREWALLET ---")
 	filename := "testing.txt"
 	password := "password"
 
-	msg := "heeej"
+	msg := "TheMsgToSign"
 
 	// returns pk and place AES encrypted with password of SK into 'filename'
-	pk := softwarewallet.Generate(filename, password)
+	fmt.Println("Generating PK, SK pair...")
+	marshalledPK := softwarewallet.Generate(filename, password)
+	fmt.Println("AES encrypted the SK using password and placed it into file: " + filename)
 
-	// 0 = N, 1 = E
-	splitPk := strings.Split(pk, ":")
+	// Unmarshal pk
+	var pk RSA.PublicKey
+	json.Unmarshal([]byte(marshalledPK), &pk)
 
 	// decrypts from filename with password, and returns the signature of the msg with the decrypted output (SK)
 	signature := softwarewallet.Sign(filename, password, []byte(msg))
+	fmt.Println("Generated a signature, using " + filename + " and password")
+	fmt.Println("\nSignature =", signature, "\n")
 
-	myPK := new(RSA.PublicKey)
-	pkN, _ := new(big.Int).SetString(splitPk[0], 10)
-	pkE, _ := new(big.Int).SetString(splitPk[1], 10)
-
-	myPK.N = pkN
-	myPK.E = pkE
-
-
-	//fmt.Println("Signature:", signature)
 	signInt, _ := new(big.Int).SetString(signature, 10)
 	msgInt := new(big.Int).SetBytes([]byte(msg))
 
-
-	fmt.Println("Verified with pk: ", RSA.Verify(*signInt, *msgInt, *myPK))
+	fmt.Println("Trying to verify signature with the original msg")
+	fmt.Println("Verified using pk: ", RSA.Verify(*signInt, *msgInt, pk))
 }
