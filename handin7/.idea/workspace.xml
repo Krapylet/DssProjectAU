@@ -19,9 +19,9 @@
     <select />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="928c929b-e4f2-4f47-9aec-87b234e83120" name="Default Changelist" comment="sha hashing of pw">
+    <list default="true" id="928c929b-e4f2-4f47-9aec-87b234e83120" name="Default Changelist" comment="bcrypt">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/peer2peer/softwarewallet/softwarewallet.go" beforeDir="false" afterPath="$PROJECT_DIR$/peer2peer/softwarewallet/softwarewallet.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/softwarewallet/softwarewallet.go" beforeDir="false" afterPath="$PROJECT_DIR$/softwarewallet/softwarewallet.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/testHandin7.go" beforeDir="false" afterPath="$PROJECT_DIR$/testHandin7.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/testing.txt" beforeDir="false" afterPath="$PROJECT_DIR$/testing.txt" afterDir="false" />
     </list>
@@ -59,6 +59,11 @@
     <property name="node.js.path.for.package.tslint" value="project" />
     <property name="node.js.selected.package.eslint" value="(autodetect)" />
     <property name="node.js.selected.package.tslint" value="(autodetect)" />
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
   </component>
   <component name="RunManager" selected="Go Build.go build testHandin7.go">
     <configuration name="go build testHandin7.go" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
@@ -103,33 +108,38 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="d" />
     <MESSAGE value="sha hashing of pw" />
-    <option name="LAST_COMMIT_MESSAGE" value="sha hashing of pw" />
+    <MESSAGE value="bcrypt" />
+    <option name="LAST_COMMIT_MESSAGE" value="bcrypt" />
   </component>
   <component name="WindowStateProjectService">
-    <state width="1590" height="277" key="GridCell.Tab.0.bottom" timestamp="1604317858892">
+    <state width="1590" height="289" key="GridCell.Tab.0.bottom" timestamp="1604327979364">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="277" key="GridCell.Tab.0.bottom/48.23.1632.1027@48.23.1632.1027" timestamp="1604317858892" />
-    <state width="1590" height="277" key="GridCell.Tab.0.center" timestamp="1604317858891">
+    <state width="1590" height="289" key="GridCell.Tab.0.bottom/48.23.1632.1027@48.23.1632.1027" timestamp="1604327979364" />
+    <state width="1590" height="289" key="GridCell.Tab.0.center" timestamp="1604327979363">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="277" key="GridCell.Tab.0.center/48.23.1632.1027@48.23.1632.1027" timestamp="1604317858891" />
-    <state width="1590" height="277" key="GridCell.Tab.0.left" timestamp="1604317858890">
+    <state width="1590" height="289" key="GridCell.Tab.0.center/48.23.1632.1027@48.23.1632.1027" timestamp="1604327979363" />
+    <state width="1590" height="289" key="GridCell.Tab.0.left" timestamp="1604327979362">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="277" key="GridCell.Tab.0.left/48.23.1632.1027@48.23.1632.1027" timestamp="1604317858890" />
-    <state width="1590" height="277" key="GridCell.Tab.0.right" timestamp="1604317858892">
+    <state width="1590" height="289" key="GridCell.Tab.0.left/48.23.1632.1027@48.23.1632.1027" timestamp="1604327979362" />
+    <state width="1590" height="289" key="GridCell.Tab.0.right" timestamp="1604327979363">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state width="1590" height="277" key="GridCell.Tab.0.right/48.23.1632.1027@48.23.1632.1027" timestamp="1604317858892" />
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1604314141254">
+    <state width="1590" height="289" key="GridCell.Tab.0.right/48.23.1632.1027@48.23.1632.1027" timestamp="1604327979363" />
+    <state x="211" y="115" key="MergeDialog" timestamp="1604326472277">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604314141254" />
-    <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1604237390530">
+    <state x="211" y="115" key="MergeDialog/48.23.1632.1027@48.23.1632.1027" timestamp="1604326472277" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2" timestamp="1604318327828">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>
-    <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604237390530" />
+    <state x="464" y="276" key="Vcs.Push.Dialog.v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604318327828" />
+    <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2" timestamp="1604326457386">
+      <screen x="48" y="23" width="1632" height="1027" />
+    </state>
+    <state x="662" y="457" key="com.intellij.openapi.vcs.update.UpdateOrStatusOptionsDialogupdate-v2/48.23.1632.1027@48.23.1632.1027" timestamp="1604326457386" />
     <state x="529" y="250" width="670" height="676" key="search.everywhere.popup" timestamp="1604317683523">
       <screen x="48" y="23" width="1632" height="1027" />
     </state>

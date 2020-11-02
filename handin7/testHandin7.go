@@ -9,9 +9,10 @@ import (
 )
 
 func main() {
+
 	fmt.Println("--- TESTING SOFTWAREWALLET ---")
 	filename := "testing.txt"
-	password := "password"
+	password := "th3R1ghtP4ssw0rd"
 
 	msg := "TheMsgToSign"
 
@@ -26,7 +27,7 @@ func main() {
 
 	// decrypts from filename with password, and returns the signature of the msg with the decrypted output (SK)
 	signature := softwarewallet.Sign(filename, password, []byte(msg))
-	fmt.Println("Generated a signature, using " + filename + " and password")
+	fmt.Println("Generated a signature, using '" + filename + "' and password: '" + password + "'")
 	fmt.Println("\nSignature =", signature, "\n")
 
 	signInt, _ := new(big.Int).SetString(signature, 10)
@@ -34,4 +35,5 @@ func main() {
 
 	fmt.Println("Trying to verify signature with the original msg")
 	fmt.Println("Verified using pk: ", RSA.Verify(*signInt, *msgInt, pk))
+
 }
