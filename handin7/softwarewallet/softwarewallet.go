@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"golang.org/x/crypto/scrypt"
 	"math/big"
-	"time"
 )
 
 /*
@@ -15,10 +14,7 @@ import (
 */
 
 func Generate(filename string, password string) string {
-
-	t := time.Now()
 	hashedPW, _ := scrypt.Key([]byte(password), []byte{}, 1<<18, 8, 1, 32)
-	fmt.Println("Time spend hashing:", time.Since(t))
 
 	// Generate keys
 	pk, sk := RSA.KeyGen(2048)
@@ -48,7 +44,8 @@ func Sign(filename string, password string, msg []byte) string {
 	var sk RSA.SecretKey
 	err := json.Unmarshal(jsonSK, &sk)
 	if err != nil {
-		panic("Wrong password, failed to unmarshal")
+		fmt.Println("Failed to unmarshal: Wrong Password")
+		return ""
 	}
 
 	msgToBigInt := new(big.Int).SetBytes(msg)
