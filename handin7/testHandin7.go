@@ -63,8 +63,8 @@ func testneg() {
 
 	// decrypts from filename with password, and returns the signature of the msg with the decrypted output (SK)
 	fmt.Println("Trying to use a wrong password to generate a signature...")
-	fmt.Println("Setting password to:")
+	fmt.Println(" - Filename: " + filename)
 	password = "Wr0ngP4ssw0rd"
-	fmt.Println("Password: " + password)
+	fmt.Println(" - Password: " + password)
 	softwarewallet.Sign(filename, password, []byte(msg))
 }
