@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // String containing your ip and port "ip:port"
@@ -32,6 +34,11 @@ var tcpListenerRunning = make(chan bool)
 // Channel for initial conn data
 var gotConnData = make(chan bool)
 
+// Transaction seen since last BlockStruct...
+var transactionsReceived []account.SignedTransaction
+
+var blockCounter int64 = 0
+
 // Mutexes
 var addressesLock = new(sync.RWMutex)
 var connsLock = new(sync.RWMutex)
@@ -50,24 +57,27 @@ var mySk RSA.SecretKey
 
 var sequencerAddress string
 var sequencerPK RSA.PublicKey
+
+// only know be the original host
 var sequencerSK RSA.SecretKey
 
 // Use when getting a new connection
-type connectStruct struct {
-	PeersList []string
-	PKMap     map[string]RSA.PublicKey
-	Sequencer string
+type ConnectStruct struct {
+	PeersList   []string
+	PKMap       map[string]RSA.PublicKey
+	Sequencer   string
+	SequencerPK RSA.PublicKey
 }
 
-type newConnectionStruct struct {
+type NewConnectionStruct struct {
 	Address string
 	PK      RSA.PublicKey
 }
 
 // Block struct
-type block struct {
-	number           int
-	transactionsList []string
+type BlockStruct struct {
+	Number           int64
+	TransactionsList []account.SignedTransaction
 }
 
 func main() {
@@ -164,6 +174,13 @@ func main() {
 			SendMessageToAll("GIVE", "")
 		}
 
+		//______________________END CONNECTING PHASE__________________________
+		// should only be used on the initial host
+		isEndConnPhaseCommand := splitMsg[0] == "END"
+		if isEndConnPhaseCommand {
+			go sendBlock()
+		}
+
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND 'amount' 'from' 'to'"
 		var isSendCommand bool = splitMsg[0] == "SEND"
@@ -203,7 +220,9 @@ func main() {
 			}
 
 			// try apply transaction
-			ledger.SignedTransaction(t)
+			// ledger.SignedTransaction(t)
+
+			transactionsReceived = append(transactionsReceived, *t)
 
 			// Broadcast
 			SendMessageToAll("TRANSACTION", t)
@@ -325,7 +344,7 @@ func SendMessageToAll(typeString string, msg interface{}) {
 	MessagesSeenLock.Unlock()
 
 	myAddressLock.RLock()
-	println("<< type: " + typeString + ", ID: " + myAddress)
+	//println("<< type: " + typeString + ", ID: " + myAddress)
 	myAddressLock.RUnlock()
 	// write msg to all known connections
 	connsLock.RLock()
@@ -395,7 +414,7 @@ func receiveMessage(conn net.Conn) {
 		// Notification that a new peer has joined the network
 		case "NEWCONNECTION":
 			// msg is NewConnectionStruct
-			var newConnStruct newConnectionStruct
+			var newConnStruct NewConnectionStruct
 			err := json.Unmarshal(marshalledMsg, &newConnStruct)
 
 			if err != nil {
@@ -424,7 +443,11 @@ func receiveMessage(conn net.Conn) {
 			var t account.SignedTransaction
 			json.Unmarshal(marshalledMsg, &t)
 			// Update ledger
-			ledger.SignedTransaction(&t)
+			// ledger.SignedTransaction(&t)
+
+			// add to seen
+			transactionsReceived = append(transactionsReceived, t)
+
 			// Broadcast this transaction
 			forward(msgReceived)
 			break
@@ -448,19 +471,21 @@ func receiveMessage(conn net.Conn) {
 			break
 		case "GETCONNDATA":
 			fmt.Println("RECEIVED GETCONNDATA")
-			connStruct := new(connectStruct)
+			connStruct := new(ConnectStruct)
 			connStruct.PeersList = addresses
 			connStruct.PKMap = ledger.GetPks()
 			connStruct.Sequencer = sequencerAddress
+			connStruct.SequencerPK = sequencerPK
 			SendMessage("CONNDATA", connStruct, conn)
 			break
 		case "CONNDATA":
 			fmt.Println("RECEIVED CONNDATA")
-			var connData connectStruct
+			var connData ConnectStruct
 			err := json.Unmarshal(marshalledMsg, &connData)
 
 			if err != nil {
 				fmt.Println("Could not unmarshal at CONNDATA")
+				continue
 			}
 			// set addresses
 			addressesLock.Lock()
@@ -472,6 +497,8 @@ func receiveMessage(conn net.Conn) {
 			sequencerAddressLock.Lock()
 			sequencerAddress = connData.Sequencer
 			sequencerAddressLock.Unlock()
+			// set sequencer pk
+			sequencerPK = connData.SequencerPK
 
 			// set my name
 			myName = ledger.EncodePK(myPk)
@@ -498,7 +525,7 @@ func receiveMessage(conn net.Conn) {
 
 			// broadcast that you've connected
 			// should contain -> address and encode(pk)
-			newConnStruct := new(newConnectionStruct)
+			newConnStruct := new(NewConnectionStruct)
 			newConnStruct.Address = myAddr
 			newConnStruct.PK = myPk
 			SendMessageToAll("NEWCONNECTION", newConnStruct)
@@ -511,6 +538,76 @@ func receiveMessage(conn net.Conn) {
 				ledger.Accounts[name] = 100
 			}
 			forward(msgReceived)
+			break
+		case "NEWBLOCK":
+			var intBlock big.Int
+			err := json.Unmarshal(marshalledMsg, &intBlock)
+
+			if err != nil {
+				fmt.Println("Failed to unmarshal at NEWBLOCK: to big.Int")
+				continue
+			}
+
+			// unsign the unmarshalled intblock, using sequencer pk
+			unsignedIntBlock := RSA.UnSign(intBlock, sequencerPK)
+
+			// unmarshal to BlockStruct
+			var newBlock BlockStruct
+			err = json.Unmarshal(unsignedIntBlock.Bytes(), &newBlock)
+			if err != nil {
+				fmt.Println("Failed to unmarshal at NEWBLOCK: BlockStruct")
+				fmt.Println(err.Error())
+				continue
+			}
+
+			go applyBlockTransactions(newBlock)
+
+			forward(msgReceived)
+
+			break
+		}
+	}
+}
+
+// Send a new BlockStruct every 10 sec. Only the initial host runs this
+func sendBlock() {
+	for {
+		time.Sleep(time.Second * 10)
+		newBlock := new(BlockStruct)
+		newBlock.Number = blockCounter
+		newBlock.TransactionsList = transactionsReceived
+		signedBlock := signBlock(*newBlock)
+
+		fmt.Println("SENDING BLOCK, ", newBlock)
+		SendMessageToAll("NEWBLOCK", signedBlock)
+
+		// reset list of transactions
+		transactionsReceived = make([]account.SignedTransaction, 0)
+
+		// Apply transaction locally
+		go applyBlockTransactions(*newBlock)
+	}
+}
+
+// used by initial host to sign the block using the sequencer SK
+func signBlock(block BlockStruct) *big.Int {
+	marshBlock, _ := json.Marshal(block)
+	fmt.Println(marshBlock)
+	intBlock := new(big.Int).SetBytes(marshBlock)
+	return RSA.Sign(*intBlock, sequencerSK)
+}
+
+// apply transaction given by the block locally
+func applyBlockTransactions(block BlockStruct) {
+	// increment your block counter
+	atomic.AddInt64(&blockCounter, 1)
+	counter := block.Number
+	transactionsList := block.TransactionsList
+	// check counter match
+	if counter == (blockCounter - 1) {
+		// Apply each transaction
+		for _, t := range transactionsList {
+			ledger.SignedTransaction(&t)
 		}
 	}
 }
@@ -581,8 +678,8 @@ func posTest() {
 	pkMap := ledger.GetPks()
 
 	fmt.Println()
-	fmt.Println("-- sending 100 to each account from my account --")
-	// Send 100 to each known peer from your own account.
+	fmt.Println("-- sending 50 to each account from my account --")
+	// Send 50 to each known peer from your own account.
 	for name, _ := range pkMap {
 		// skip your own account
 		if name == myName {
@@ -590,7 +687,7 @@ func posTest() {
 		}
 		// create a signed transaction
 		t := new(account.SignedTransaction)
-		t.Amount = 100
+		t.Amount = 50
 		t.From = myName
 		t.To = name
 		// encode transaction as a byte array
@@ -602,7 +699,8 @@ func posTest() {
 		// set signature
 		t.Signature = signature.String()
 		// apply locally
-		ledger.SignedTransaction(t)
+		// ledger.SignedTransaction(t)
+		transactionsReceived = append(transactionsReceived, *t)
 		// Broadcast
 		SendMessageToAll("TRANSACTION", t)
 	}

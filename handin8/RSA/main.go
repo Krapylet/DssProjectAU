@@ -113,7 +113,7 @@ func Sign(msg big.Int, sk SecretKey) *big.Int {
 */
 func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 	// Compute m = s^e mod n
-	m := new(big.Int).Exp(&s, pk.E, pk.N)
+	m := UnSign(s, pk)
 
 	// if the original message is equal to the (de)signed message
 	// using the PK, the SK and PK most match, and therefore it most be signed by
@@ -122,6 +122,10 @@ func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 		return true
 	}
 	return false
+}
+
+func UnSign(s big.Int, pk PublicKey) *big.Int {
+	return new(big.Int).Exp(&s, pk.E, pk.N)
 }
 
 func MakeSHA256(msg []byte) int64 {
