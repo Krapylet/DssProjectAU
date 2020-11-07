@@ -26,14 +26,19 @@ var addresses []string
 // MessagesSeen Set of all messages sent
 var MessagesSeen = make(map[string]bool)
 
-// Bool to determine if the tcp listener is running
+// Channel to determine if the tcp listener is running
 var tcpListenerRunning = make(chan bool)
 
-// Flag for when list of connections is received
+// Channel for when list of connections is received
 var gotConnsList = make(chan bool)
 
-// Flag for when PKMap is received
+// Channel for when PKMap is received
 var gotPKmap = make(chan bool)
+
+// Channel for get sequencer
+var gotSequencer = make(chan bool)
+
+var gotConnData = make(chan bool)
 
 // Mutexes
 var addressesLock = new(sync.RWMutex)
@@ -41,6 +46,7 @@ var connsLock = new(sync.RWMutex)
 var msgIDCounterLock = new(sync.RWMutex)
 var myAddressLock = new(sync.RWMutex)
 var MessagesSeenLock = new(sync.RWMutex)
+var sequencerAddressLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -49,6 +55,22 @@ var MessageIDCounter = 0
 var myName string
 var myPk RSA.PublicKey
 var mySk RSA.SecretKey
+
+var sequencerAddress string
+var sequencerPK RSA.PublicKey
+var sequencerSK RSA.SecretKey
+
+// Use when getting a new connection
+type connectStruct struct {
+	PeersList []string
+	PKMap     map[string]RSA.PublicKey
+	Sequencer string
+}
+
+type newConnectionStruct struct {
+	Address string
+	PK      RSA.PublicKey
+}
 
 func main() {
 	// generate RSA Key
@@ -85,7 +107,7 @@ func main() {
 			myAddressLock.RUnlock()
 			addressesLock.RLock()
 			for i := range addresses {
-				fmt.Println("-" + addresses[i])
+				fmt.Println("-> " + addresses[i])
 			}
 			addressesLock.RUnlock()
 		}
@@ -93,7 +115,7 @@ func main() {
 			fmt.Println("--- MY CONS ---")
 			connsLock.RLock()
 			for i := range conns {
-				fmt.Println("-" + conns[i].RemoteAddr().String())
+				fmt.Println("-> " + conns[i].RemoteAddr().String())
 			}
 			connsLock.RUnlock()
 		}
@@ -118,6 +140,12 @@ func main() {
 			for encodedKey := range pks {
 				fmt.Println(encodedKey)
 			}
+			fmt.Println("-----------------")
+		}
+
+		if strings.Contains(msg, "!S") {
+			fmt.Println("--- Sequencer Address ---")
+			fmt.Println(sequencerAddress)
 			fmt.Println("-----------------")
 		}
 
@@ -217,6 +245,11 @@ func connect() {
 		// adds your pk to ledger pks list and returns your name
 		myName = ledger.EncodePK(myPk)
 
+		// Setup Sequencer
+		sequencerAddress = myAddress
+		fmt.Println("Generating Sequencer Key Pair")
+		sequencerPK, sequencerSK = RSA.KeyGen(2048)
+
 	} else {
 		fmt.Println("Connection Established!")
 		defer hostConn.Close()
@@ -225,27 +258,14 @@ func connect() {
 		go receiveMessage(hostConn)
 
 		//Before the client has been assigned a proper port, says it has port NEW. Messages from NEW ports are never put into MessagesSeen
-		//myAddressLock.Lock()
 		myAddress = "127.0.0.1:NEW"
-		//myAddressLock.Unlock()
 
-		// Send message to request it...
-		fmt.Println("Requesting List...")
-		SendMessage("GETPEERLIST", "", hostConn)
+		// get addresses, sequencer and PKMAP
+		fmt.Println("Requesting Connection Struct data")
+		SendMessage("GETCONNDATA", "", hostConn)
+		// wait til received
+		<-gotConnData
 
-		// wait until connection list is received
-		<-gotConnsList
-
-		// Get the list of all peers from host
-		// Get Known names and pk's
-		fmt.Println("Requesting Name -> PK map...")
-		// ask a known conn for the PK LIST
-		connsLock.RLock()
-		SendMessage("GETPKMAP", "", conns[len(conns)-1])
-		connsLock.RUnlock()
-
-		// wait till received
-		<-gotPKmap
 	}
 }
 
@@ -366,111 +386,31 @@ func receiveMessage(conn net.Conn) {
 		marshalledMsg := []byte(strings.Join(splitMsg[2:], ";"))
 
 		switch typeString {
-		// Request for list of all peers
-		case "GETPEERLIST":
-			// Received a request to get a list of known peers. Send list
-			SendMessage("PEERS", addresses, conn)
-			break
-		// List of of all peers
-		case "PEERS":
-			var peerList []string
-			err := json.Unmarshal(marshalledMsg, &peerList)
-			if err != nil {
-				fmt.Print("Could not unmarshal at PEERS..., " + err.Error())
-			}
-
-			addressesLock.Lock()
-			addresses = peerList
-			addresses = append(addresses, conn.LocalAddr().String())
-			addressesLock.Unlock()
-
-			fmt.Println("Disconnection from host...")
-
-			// Disconnect from old host
-			SendMessage("DISCONNECT", "", conn)
-
-			connsLock.Lock()
-			removeConn(conn)
-			connsLock.Unlock()
-
-			// Connect to new peers
-			connectToPeers()
-
-			addressesLock.RLock()
-			myAddr := addresses[len(addresses)-1]
-			addressesLock.RUnlock()
-
-			myAddressLock.Lock()
-			myAddress = myAddr
-			myAddressLock.Unlock()
-
-			gotConnsList <- true
-
-			// Broadcast that you've connected
-			myAddressLock.RLock()
-			SendMessageToAll("NEWCONNECTION", myAddress)
-			myAddressLock.RUnlock()
-
-			// Ask a peer for previous transactions
-			connsLock.RLock()
-			peerConn := conns[len(conns)-1]
-			connsLock.RUnlock()
-			SendMessage("GETALLTRANSACTIONS", "", peerConn)
-			break
 		// Notification that a new peer has joined the network
 		case "NEWCONNECTION":
-			var address string
-			json.Unmarshal(marshalledMsg, &address)
+			// msg is NewConnectionStruct
+			var newConnStruct newConnectionStruct
+			err := json.Unmarshal(marshalledMsg, &newConnStruct)
+
+			if err != nil {
+				fmt.Println("Failed to unmarshal at NEWCONNECTION")
+			}
+
 			// check if the address is already known by this peer
+			address := newConnStruct.Address
 			addressesLock.Lock()
 			if !strings.Contains(strings.Join(addresses, ","), address) {
 				// Not known, so add to list of addresses
 				addresses = append(addresses, address)
 			}
 			addressesLock.Unlock()
+
+			// Add the new PK
+			newPK := newConnStruct.PK
+			ledger.EncodePK(newPK)
+
 			// Send the message to all the known connections of this peer too
 			forward(msgReceived)
-			break
-		//request all transactions
-		case "GETALLTRANSACTIONS":
-			var transactions []string
-			MessagesSeenLock.RLock()
-			for key := range MessagesSeen {
-				//Get type of key
-				keyType := strings.Split(key, ";")[1]
-				//Append all seen transactions to temp
-				if keyType == "TRANSACTION" {
-					transactions = append(transactions, key)
-				}
-			}
-			MessagesSeenLock.RUnlock()
-			SendMessage("ALLTRANSACTIONS", transactions, conn)
-			break
-		//A list of all transactions that the peer at conn has seen
-		case "ALLTRANSACTIONS":
-			//unmarshal the array of messages
-			var messages []string
-			json.Unmarshal(marshalledMsg, &messages)
-			for i := range messages {
-				//get message
-				message := messages[i]
-
-				MessagesSeenLock.Lock()
-				//Skip messages already accounted for
-				if MessagesSeen[message] {
-					MessagesSeenLock.Unlock()
-					continue
-				}
-				MessagesSeen[message] = true
-				MessagesSeenLock.Unlock()
-				//Get the marshalled transaction
-				marshalledTransaction := strings.Split(message, ";")[2]
-
-				//Unmarshal and apply the transaction
-				var t account.Transaction
-				json.Unmarshal([]byte(marshalledTransaction), &t)
-				ledger.Transaction(&t)
-			}
 			break
 		// A transaction
 		case "TRANSACTION":
@@ -500,27 +440,61 @@ func receiveMessage(conn net.Conn) {
 			// Close connection
 			conn.Close()
 			break
-		case "GETPKMAP":
-			// received request to get PK map
-			SendMessage("PKMAP", ledger.GetPks(), conn)
+		case "GETCONNDATA":
+			fmt.Println("RECEIVED GETCONNDATA")
+			connStruct := new(connectStruct)
+			connStruct.PeersList = addresses
+			connStruct.PKMap = ledger.GetPks()
+			connStruct.Sequencer = sequencerAddress
+			SendMessage("CONNDATA", connStruct, conn)
 			break
-		case "PKMAP":
-			// received the namePK map
-			var newPKmap map[string]RSA.PublicKey
-			json.Unmarshal(marshalledMsg, &newPKmap)
-			ledger.SetPks(newPKmap)
+		case "CONNDATA":
+			fmt.Println("RECEIVED CONNDATA")
+			var connData connectStruct
+			err := json.Unmarshal(marshalledMsg, &connData)
 
+			if err != nil {
+				fmt.Println("Could not unmarshal at CONNDATA")
+			}
+			// set addresses
+			addresses = connData.PeersList
+			// set known pks
+			ledger.SetPks(connData.PKMap)
+			// set sequencer address
+			sequencerAddress = connData.Sequencer
+
+			// set my name
 			myName = ledger.EncodePK(myPk)
 
-			gotPKmap <- true
+			// append my own address
+			myAddr := conn.LocalAddr().String()
+			addresses = append(addresses, myAddr)
 
-			// broadcast your pk
-			SendMessageToAll("NEWNAMEPK", myPk)
-		case "NEWNAMEPK":
-			var newPk RSA.PublicKey
-			json.Unmarshal(marshalledMsg, &newPk)
-			ledger.EncodePK(newPk)
-			forward(msgReceived)
+			// Disconnect from old host
+			fmt.Println("Disconnection from host...")
+			SendMessage("DISCONNECT", "", conn)
+
+			connsLock.Lock()
+			removeConn(conn)
+			connsLock.Unlock()
+
+			// connect to max 10 peers
+			connectToPeers()
+
+			// set my address
+			myAddressLock.Lock()
+			myAddress = myAddr
+			myAddressLock.Unlock()
+
+			// broadcast that you've connected
+			// should contain -> address-encode(pk)
+			newConnStruct := new(newConnectionStruct)
+			newConnStruct.Address = myAddr
+			newConnStruct.PK = myPk
+			SendMessageToAll("NEWCONNECTION", newConnStruct)
+
+			gotConnData <- true
+			break
 		}
 	}
 }
