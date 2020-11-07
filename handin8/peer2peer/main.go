@@ -449,11 +449,15 @@ func receiveMessage(conn net.Conn) {
 				fmt.Println("Could not unmarshal at CONNDATA")
 			}
 			// set addresses
+			addressesLock.Lock()
 			addresses = connData.PeersList
+			addressesLock.Unlock()
 			// set known pks
 			ledger.SetPks(connData.PKMap)
 			// set sequencer address
+			sequencerAddressLock.Lock()
 			sequencerAddress = connData.Sequencer
+			sequencerAddressLock.Unlock()
 
 			// set my name
 			myName = ledger.EncodePK(myPk)
@@ -479,7 +483,7 @@ func receiveMessage(conn net.Conn) {
 			myAddressLock.Unlock()
 
 			// broadcast that you've connected
-			// should contain -> address-encode(pk)
+			// should contain -> address and encode(pk)
 			newConnStruct := new(newConnectionStruct)
 			newConnStruct.Address = myAddr
 			newConnStruct.PK = myPk
