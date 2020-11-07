@@ -29,15 +29,7 @@ var MessagesSeen = make(map[string]bool)
 // Channel to determine if the tcp listener is running
 var tcpListenerRunning = make(chan bool)
 
-// Channel for when list of connections is received
-var gotConnsList = make(chan bool)
-
-// Channel for when PKMap is received
-var gotPKmap = make(chan bool)
-
-// Channel for get sequencer
-var gotSequencer = make(chan bool)
-
+// Channel for initial conn data
 var gotConnData = make(chan bool)
 
 // Mutexes
