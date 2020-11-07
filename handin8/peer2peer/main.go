@@ -64,6 +64,12 @@ type newConnectionStruct struct {
 	PK      RSA.PublicKey
 }
 
+// Block struct
+type block struct {
+	number           int
+	transactionsList []string
+}
+
 func main() {
 	// generate RSA Key
 	myPk, mySk = RSA.KeyGen(2048)
@@ -149,6 +155,14 @@ func main() {
 		}
 
 		var splitMsg []string = strings.Split(msg, " ")
+
+		//______________________SET EACH ACCOUNT TO 100_________________________
+		if strings.Contains(msg, "!GIVE") {
+			for name, _ := range ledger.GetPks() {
+				ledger.Accounts[name] = 100
+			}
+			SendMessageToAll("GIVE", "")
+		}
 
 		//______________________TRANSACTION COMMAND___________________________
 		// "SEND 'amount' 'from' 'to'"
@@ -491,6 +505,12 @@ func receiveMessage(conn net.Conn) {
 
 			gotConnData <- true
 			break
+		// Used to give each account 100
+		case "GIVE":
+			for name, _ := range ledger.GetPks() {
+				ledger.Accounts[name] = 100
+			}
+			forward(msgReceived)
 		}
 	}
 }

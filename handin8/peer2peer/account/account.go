@@ -56,6 +56,10 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) {
 	fmt.Println("Transaction is valid:", validSignature)
 
 	if validSignature {
+		if !(l.Accounts[t.From] >= t.Amount) {
+			fmt.Println("FAILED: Not enough money")
+			return
+		}
 		l.Accounts[t.From] -= t.Amount
 		l.Accounts[t.To] += t.Amount
 	}
@@ -81,7 +85,11 @@ func validateSignature(t *SignedTransaction) bool {
 func (l *Ledger) EncodePK(pk RSA.PublicKey) string {
 
 	name := RSA.MakeSHA256Hex([]byte(pk.N.String()))
-	pksMap[name] = pk
+
+	_, inMap := pksMap[name]
+	if !inMap {
+		pksMap[name] = pk
+	}
 
 	return name
 }
