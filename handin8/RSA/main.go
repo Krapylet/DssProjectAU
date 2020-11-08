@@ -125,7 +125,8 @@ func Verify(s big.Int, msg big.Int, pk PublicKey) bool {
 }
 
 func UnSign(s big.Int, pk PublicKey) *big.Int {
-	return new(big.Int).Exp(&s, pk.E, pk.N)
+	res := new(big.Int).Exp(&s, pk.E, pk.N)
+	return res
 }
 
 func MakeSHA256(msg []byte) int64 {

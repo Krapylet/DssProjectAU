@@ -176,7 +176,7 @@ func main() {
 
 		//______________________END CONNECTING PHASE__________________________
 		// should only be used on the initial host
-		isEndConnPhaseCommand := splitMsg[0] == "END"
+		isEndConnPhaseCommand := splitMsg[0] == "!END"
 		if isEndConnPhaseCommand {
 			go sendBlock()
 		}
@@ -540,30 +540,34 @@ func receiveMessage(conn net.Conn) {
 			forward(msgReceived)
 			break
 		case "NEWBLOCK":
-			var intBlock big.Int
-			err := json.Unmarshal(marshalledMsg, &intBlock)
-
+			// Received a new block of transactions from the sequencer
+			// the Received 'block' is signed and has type *big.Int
+			var signedBlock *big.Int
+			err := json.Unmarshal(marshalledMsg, &signedBlock)
 			if err != nil {
-				fmt.Println("Failed to unmarshal at NEWBLOCK: to big.Int")
-				continue
+				fmt.Println("Failed to Unmarshal at NEWBLOCK: to big.Int")
+				break
 			}
+			// unsign the signedBlock, using the sequencer PK. Gives a *big.Int
+			unsignedBlock := RSA.UnSign(*signedBlock, sequencerPK)
 
-			// unsign the unmarshalled intblock, using sequencer pk
-			unsignedIntBlock := RSA.UnSign(intBlock, sequencerPK)
+			// Get bytes of this block
+			byteBlock := unsignedBlock.Bytes()
 
-			// unmarshal to BlockStruct
+			fmt.Println("\nSignedBlock:", signedBlock)
+			fmt.Println("\nUnsignedBlock:", unsignedBlock)
+
+			// Unmarshal to BlockStruct
 			var newBlock BlockStruct
-			err = json.Unmarshal(unsignedIntBlock.Bytes(), &newBlock)
+			err = json.Unmarshal(byteBlock, &newBlock)
 			if err != nil {
-				fmt.Println("Failed to unmarshal at NEWBLOCK: BlockStruct")
-				fmt.Println(err.Error())
-				continue
+				fmt.Println("Failed to Unmarshal at NEWBLOCK: to BlockStruct")
 			}
 
-			go applyBlockTransactions(newBlock)
+			// apply transactions locally
+			applyBlockTransactions(newBlock)
 
 			forward(msgReceived)
-
 			break
 		}
 	}
@@ -571,30 +575,41 @@ func receiveMessage(conn net.Conn) {
 
 // Send a new BlockStruct every 10 sec. Only the initial host runs this
 func sendBlock() {
+	// define a new block
+	newBlock := new(BlockStruct)
 	for {
 		time.Sleep(time.Second * 10)
-		newBlock := new(BlockStruct)
 		newBlock.Number = blockCounter
 		newBlock.TransactionsList = transactionsReceived
-		signedBlock := signBlock(*newBlock)
 
-		fmt.Println("SENDING BLOCK, ", newBlock)
+		// Sign Block
+		// Marshal = []byte -> big.Int -> Sign = Big.Int
+		byteBlock, err := json.Marshal(newBlock)
+		if err != nil {
+			fmt.Println("Failed to Marshal at sendBlock: byteBlock")
+			return
+		}
+		intBlock := new(big.Int).SetBytes(byteBlock)
+		signedBlock := RSA.Sign(*intBlock, sequencerSK)
+
+		fmt.Println("\nOriginalBlock:\n", intBlock)
+		fmt.Println("\nSignedBlock:\n", signedBlock)
+
+		fmt.Println()
+		// TODO: Forstår ikke hvordan unsign ikke giver 'intBlock', når det er den man signer?
+		// Det skal bruges i case "NEWBLOCK", når man modtager den, men kan ikke unmarshal når unsign ikke giver det rigtige
+		test := RSA.UnSign(*signedBlock, sequencerPK)
+		fmt.Println("\nTEST (UNSIGN SIGNEDBLOCK - Should give OriginalBlock)\n", test)
+
+		// Broadcast the signedBlock
 		SendMessageToAll("NEWBLOCK", signedBlock)
 
-		// reset list of transactions
+		// Reset transactionsReceived
 		transactionsReceived = make([]account.SignedTransaction, 0)
 
 		// Apply transaction locally
-		go applyBlockTransactions(*newBlock)
+		applyBlockTransactions(*newBlock)
 	}
-}
-
-// used by initial host to sign the block using the sequencer SK
-func signBlock(block BlockStruct) *big.Int {
-	marshBlock, _ := json.Marshal(block)
-	fmt.Println(marshBlock)
-	intBlock := new(big.Int).SetBytes(marshBlock)
-	return RSA.Sign(*intBlock, sequencerSK)
 }
 
 // apply transaction given by the block locally
@@ -603,7 +618,7 @@ func applyBlockTransactions(block BlockStruct) {
 	atomic.AddInt64(&blockCounter, 1)
 	counter := block.Number
 	transactionsList := block.TransactionsList
-	// check counter match
+	// check counter match. -1 since it is incremented at the beginning
 	if counter == (blockCounter - 1) {
 		// Apply each transaction
 		for _, t := range transactionsList {
