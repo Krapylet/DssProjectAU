@@ -34,10 +34,11 @@ var tcpListenerRunning = make(chan bool)
 // Channel for initial conn data
 var gotConnData = make(chan bool)
 
-// Transaction seen since last BlockStruct...
-var transactionsReceived []account.SignedTransaction
+// MAP of key=transaction (with no signature), value=signature. Transaction seen since last BlockStruct...
+var transactionsReceived = make(map[string]account.SignedTransaction)
 
 var blockCounter int64 = 0
+var transactionCounter int64 = 0
 
 // Mutexes
 var addressesLock = new(sync.RWMutex)
@@ -46,6 +47,8 @@ var msgIDCounterLock = new(sync.RWMutex)
 var myAddressLock = new(sync.RWMutex)
 var MessagesSeenLock = new(sync.RWMutex)
 var sequencerAddressLock = new(sync.RWMutex)
+var blockCounterLock = new(sync.RWMutex)
+var transactionsReceivedLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -77,7 +80,7 @@ type NewConnectionStruct struct {
 // Block struct
 type BlockStruct struct {
 	Number           int64
-	TransactionsList []account.SignedTransaction
+	TransactionsList []string
 }
 
 func main() {
@@ -163,6 +166,9 @@ func main() {
 		if strings.Contains(msg, "!TESTNEG") {
 			negTest()
 		}
+		if strings.Contains(msg, "!TESTING") {
+			sendOneEveryHalfSec()
+		}
 
 		var splitMsg []string = strings.Split(msg, " ")
 
@@ -195,7 +201,7 @@ func main() {
 			// set values from input
 			myAddressLock.RLock()
 			msgIDCounterLock.RLock()
-			t.ID = myAddress + ":" + strconv.Itoa(MessageIDCounter)
+			t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
 			myAddressLock.RUnlock()
 			msgIDCounterLock.RUnlock()
 
@@ -222,7 +228,13 @@ func main() {
 			// try apply transaction
 			// ledger.SignedTransaction(t)
 
-			transactionsReceived = append(transactionsReceived, *t)
+			atomic.AddInt64(&transactionCounter, 1)
+
+			// get id of transaction, t.id
+			transactionNoSign := t.ID
+			transactionsReceivedLock.Lock()
+			transactionsReceived[transactionNoSign] = *t
+			transactionsReceivedLock.Unlock()
 
 			// Broadcast
 			SendMessageToAll("TRANSACTION", t)
@@ -446,7 +458,9 @@ func receiveMessage(conn net.Conn) {
 			// ledger.SignedTransaction(&t)
 
 			// add to seen
-			transactionsReceived = append(transactionsReceived, t)
+			transactionsReceivedLock.Lock()
+			transactionsReceived[t.ID] = t
+			transactionsReceivedLock.Unlock()
 
 			// Broadcast this transaction
 			forward(msgReceived)
@@ -541,33 +555,31 @@ func receiveMessage(conn net.Conn) {
 			break
 		case "NEWBLOCK":
 			// Received a new block of transactions from the sequencer
-			// the Received 'block' is signed and has type *big.Int
+			fmt.Println("Received a block")
+			// received block is signed as *big.Int
 			var signedBlock *big.Int
 			err := json.Unmarshal(marshalledMsg, &signedBlock)
 			if err != nil {
-				fmt.Println("Failed to Unmarshal at NEWBLOCK: to big.Int")
+				fmt.Println("Error unmarshalling at NEWBLOCK: signedBlock")
 				break
 			}
-			// unsign the signedBlock, using the sequencer PK. Gives a *big.Int
+			// unsign signedBlock
 			unsignedBlock := RSA.UnSign(*signedBlock, sequencerPK)
 
-			// Get bytes of this block
-			byteBlock := unsignedBlock.Bytes()
-
-			fmt.Println("\nSignedBlock:", signedBlock)
-			fmt.Println("\nUnsignedBlock:", unsignedBlock)
-
-			// Unmarshal to BlockStruct
+			// unmarshal to block
 			var newBlock BlockStruct
-			err = json.Unmarshal(byteBlock, &newBlock)
+			err = json.Unmarshal(unsignedBlock.Bytes(), &newBlock)
 			if err != nil {
-				fmt.Println("Failed to Unmarshal at NEWBLOCK: to BlockStruct")
+				fmt.Println("Failed unmarshalling at NEWBLOCK: unsignedBlock")
+				break
 			}
 
-			// apply transactions locally
+			// forward msg
+			forward(msgReceived)
+
+			// apply block
 			applyBlockTransactions(newBlock)
 
-			forward(msgReceived)
 			break
 		}
 	}
@@ -579,52 +591,70 @@ func sendBlock() {
 	newBlock := new(BlockStruct)
 	for {
 		time.Sleep(time.Second * 10)
+		blockCounterLock.RLock()
 		newBlock.Number = blockCounter
-		newBlock.TransactionsList = transactionsReceived
-
-		// Sign Block
-		// Marshal = []byte -> big.Int -> Sign = Big.Int
-		byteBlock, err := json.Marshal(newBlock)
-		if err != nil {
-			fmt.Println("Failed to Marshal at sendBlock: byteBlock")
-			return
+		blockCounterLock.RUnlock()
+		// create list of all transactions
+		var listOfTransactions []string
+		transactionsReceivedLock.RLock()
+		for tid, _ := range transactionsReceived {
+			listOfTransactions = append(listOfTransactions, tid)
 		}
+		transactionsReceivedLock.RUnlock()
+		// Each transaction in the list is:
+		// - id - Each peer are responsible for storing the signedTransaction
+		newBlock.TransactionsList = listOfTransactions
+
+		// Sign this block using sequencer SK
+		// marshal to get bytes of block
+		byteBlock, _ := json.Marshal(newBlock)
+		// Create big.Int from this
 		intBlock := new(big.Int).SetBytes(byteBlock)
+		// sign the intBlock
 		signedBlock := RSA.Sign(*intBlock, sequencerSK)
 
-		fmt.Println("\nOriginalBlock:\n", intBlock)
-		fmt.Println("\nSignedBlock:\n", signedBlock)
+		fmt.Println("Sending block", blockCounter)
 
-		fmt.Println()
-		// TODO: Forstår ikke hvordan unsign ikke giver 'intBlock', når det er den man signer?
-		// Det skal bruges i case "NEWBLOCK", når man modtager den, men kan ikke unmarshal når unsign ikke giver det rigtige
-		test := RSA.UnSign(*signedBlock, sequencerPK)
-		fmt.Println("\nTEST (UNSIGN SIGNEDBLOCK - Should give OriginalBlock)\n", test)
-
-		// Broadcast the signedBlock
+		// broadcast the signedBlock
 		SendMessageToAll("NEWBLOCK", signedBlock)
 
-		// Reset transactionsReceived
-		transactionsReceived = make([]account.SignedTransaction, 0)
-
-		// Apply transaction locally
+		// apply transactions locally
 		applyBlockTransactions(*newBlock)
 	}
 }
 
 // apply transaction given by the block locally
 func applyBlockTransactions(block BlockStruct) {
+
+	fmt.Println("Applying block", block.Number)
 	// increment your block counter
 	atomic.AddInt64(&blockCounter, 1)
+
 	counter := block.Number
 	transactionsList := block.TransactionsList
-	// check counter match. -1 since it is incremented at the beginning
-	if counter == (blockCounter - 1) {
-		// Apply each transaction
-		for _, t := range transactionsList {
-			ledger.SignedTransaction(&t)
-		}
+
+	// check if counters match: +1 since blockCounter is incremented at the beginning
+	blockCounterLock.RLock()
+	if blockCounter != (counter + 1) {
+		fmt.Println("Wrong Block Counter")
+		blockCounterLock.RUnlock()
+		return
 	}
+	blockCounterLock.RUnlock()
+	// list of: id-amount-from-to
+	for _, t := range transactionsList {
+		// get transaction, will panic if this transaction was not received
+		transactionsReceivedLock.RLock()
+		transaction := transactionsReceived[t]
+		transactionsReceivedLock.RUnlock()
+
+		// apply it
+		ledger.SignedTransaction(&transaction)
+	}
+	// reset map of seen transactions
+	transactionsReceivedLock.Lock()
+	transactionsReceived = make(map[string]account.SignedTransaction)
+	transactionsReceivedLock.Unlock()
 }
 
 func connectToPeers() {
@@ -702,6 +732,7 @@ func posTest() {
 		}
 		// create a signed transaction
 		t := new(account.SignedTransaction)
+		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
 		t.Amount = 50
 		t.From = myName
 		t.To = name
@@ -715,7 +746,8 @@ func posTest() {
 		t.Signature = signature.String()
 		// apply locally
 		// ledger.SignedTransaction(t)
-		transactionsReceived = append(transactionsReceived, *t)
+
+		transactionsReceived[t.ID] = *t
 		// Broadcast
 		SendMessageToAll("TRANSACTION", t)
 	}
@@ -773,4 +805,41 @@ func negTest() {
 	fmt.Println("-----------------")
 	fmt.Println()
 
+}
+
+func sendOneEveryHalfSec() {
+	pkMap := ledger.GetPks()
+	// Send 1 to a peer every half sec
+	for name, _ := range pkMap {
+		// skip your own account
+		if name == myName {
+			continue
+		}
+		// create a signed transaction
+		t := new(account.SignedTransaction)
+		t.Amount = 1
+		t.From = myName
+		t.To = name
+		for {
+			t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
+			atomic.AddInt64(&transactionCounter, 1)
+			// encode transaction as a byte array
+			toSign, _ := json.Marshal(t)
+			// Create big int from this
+			toSignBig := new(big.Int).SetBytes(toSign)
+			// Sign using SK
+			signature := RSA.Sign(*toSignBig, mySk)
+			// set signature
+			t.Signature = signature.String()
+
+			// list of: id-amount-from-to
+			transactionsReceivedLock.Lock()
+			transactionsReceived[t.ID] = *t
+			transactionsReceivedLock.Unlock()
+			// Broadcast
+			SendMessageToAll("TRANSACTION", t)
+
+			time.Sleep(time.Second / 2)
+		}
+	}
 }
