@@ -166,23 +166,20 @@ func main() {
 		if strings.Contains(msg, "!TESTNEG") {
 			negTest()
 		}
-		if strings.Contains(msg, "!TESTING") {
-			sendOneEveryHalfSec()
-		}
 
 		var splitMsg []string = strings.Split(msg, " ")
 
-		//______________________SET EACH ACCOUNT TO 100_________________________
+		//______________________SET EACH ACCOUNT TO 1000_________________________
 		if strings.Contains(msg, "!GIVE") {
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 100
+				ledger.Accounts[name] = 1000
 			}
 			SendMessageToAll("GIVE", "")
 		}
 
-		//______________________END CONNECTING PHASE__________________________
+		//_______________END CONNECTING PHASE AND START SENDING BLOCKS__________
 		// should only be used on the initial host
-		isEndConnPhaseCommand := splitMsg[0] == "!END"
+		isEndConnPhaseCommand := splitMsg[0] == "!START"
 		if isEndConnPhaseCommand {
 			go sendBlock()
 		}
@@ -805,41 +802,4 @@ func negTest() {
 	fmt.Println("-----------------")
 	fmt.Println()
 
-}
-
-func sendOneEveryHalfSec() {
-	pkMap := ledger.GetPks()
-	// Send 1 to a peer every half sec
-	for name, _ := range pkMap {
-		// skip your own account
-		if name == myName {
-			continue
-		}
-		// create a signed transaction
-		t := new(account.SignedTransaction)
-		t.Amount = 1
-		t.From = myName
-		t.To = name
-		for {
-			t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
-			atomic.AddInt64(&transactionCounter, 1)
-			// encode transaction as a byte array
-			toSign, _ := json.Marshal(t)
-			// Create big int from this
-			toSignBig := new(big.Int).SetBytes(toSign)
-			// Sign using SK
-			signature := RSA.Sign(*toSignBig, mySk)
-			// set signature
-			t.Signature = signature.String()
-
-			// list of: id-amount-from-to
-			transactionsReceivedLock.Lock()
-			transactionsReceived[t.ID] = *t
-			transactionsReceivedLock.Unlock()
-			// Broadcast
-			SendMessageToAll("TRANSACTION", t)
-
-			time.Sleep(time.Second / 2)
-		}
-	}
 }
