@@ -546,7 +546,7 @@ func receiveMessage(conn net.Conn) {
 		// Used to give each account 100
 		case "GIVE":
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 100
+				ledger.Accounts[name] = 1000
 			}
 			forward(msgReceived)
 			break
