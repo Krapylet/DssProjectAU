@@ -186,10 +186,11 @@ func main() {
 			go sendBlock()
 		}
 
-		//_______________SEND 1000 TRANSACTIONS TO B AND C__________________
-		isSend1000Command := splitMsg[0] == "!SEND1000"
+		//_______________SEND X TRANSACTIONS TO B AND C__________________
+		isSend1000Command := splitMsg[0] == "!SPAM"
 		if isSend1000Command {
-			go spamTest()
+			amountOfTransactions, _ := strconv.Atoi(splitMsg[1])
+			spamTest(amountOfTransactions)
 		}
 
 		//______________________TRANSACTION COMMAND___________________________
@@ -240,6 +241,8 @@ func main() {
 			transactionsReceivedLock.Lock()
 			transactionsReceived[transactionNoSign] = *t
 			transactionsReceivedLock.Unlock()
+
+			fmt.Println(t)
 
 			// Broadcast
 			SendMessageToAll("TRANSACTION", t)
@@ -341,6 +344,7 @@ func tcpListener(myIP string, myPort string) {
 func SendMessageToAll(typeString string, msg interface{}) {
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
+
 	// Calculate the message ID
 	myAddressLock.RLock()
 	msgIDCounterLock.RLock()
@@ -561,6 +565,7 @@ func receiveMessage(conn net.Conn) {
 		case "NEWBLOCK":
 			// Received a new block of transactions from the sequencer
 			// received block is signed as *big.Int
+
 			var signedBlock *big.Int
 			err := json.Unmarshal(marshalledMsg, &signedBlock)
 			if err != nil {
@@ -568,13 +573,18 @@ func receiveMessage(conn net.Conn) {
 				break
 			}
 			// unsign signedBlock
+			fmt.Println("\nSIGNED BLOCK:", signedBlock)
+
 			unsignedBlock := RSA.UnSign(*signedBlock, sequencerPK)
+
+			fmt.Println("\nUNSIGNED BLOCK:", unsignedBlock)
 
 			// unmarshal to block
 			var newBlock BlockStruct
 			err = json.Unmarshal(unsignedBlock.Bytes(), &newBlock)
 			if err != nil {
 				fmt.Println("Failed unmarshalling at NEWBLOCK: unsignedBlock")
+				panic(err.Error())
 				break
 			}
 
@@ -614,10 +624,12 @@ func sendBlock() {
 		byteBlock, _ := json.Marshal(newBlock)
 		// Create big.Int from this
 		intBlock := new(big.Int).SetBytes(byteBlock)
+
 		// sign the intBlock
 		signedBlock := RSA.Sign(*intBlock, sequencerSK)
 
-		fmt.Println("Sending block", blockCounter)
+		fmt.Println("\nSIGNED BLOCK:", signedBlock)
+		fmt.Println("\nUNSIGNED BLOCK:", intBlock)
 
 		// broadcast the signedBlock
 		SendMessageToAll("NEWBLOCK", signedBlock)
@@ -648,12 +660,12 @@ func applyBlockTransactions(block BlockStruct) {
 	// list of: id-amount-from-to
 	for _, t := range transactionsList {
 		// get transaction, will panic if this transaction was not received
-		transactionsReceivedLock.RLock()
-		transaction := transactionsReceived[t]
-		transactionsReceivedLock.RUnlock()
+		if transaction, inMap := transactionsReceived[t]; inMap {
+			ledger.SignedTransaction(&transaction)
+		} else {
+			panic("Didnt receive that transaction: " + t)
+		}
 
-		// apply it
-		ledger.SignedTransaction(&transaction)
 	}
 	// reset map of seen transactions
 	transactionsReceivedLock.Lock()
@@ -749,8 +761,6 @@ func posTest() {
 		signature := RSA.Sign(*toSignBig, mySk)
 		// set signature
 		t.Signature = signature.String()
-		// apply locally
-		// ledger.SignedTransaction(t)
 
 		transactionsReceived[t.ID] = *t
 		// Broadcast
@@ -811,10 +821,10 @@ func negTest() {
 	fmt.Println()
 }
 
-func spamTest() {
+func spamTest(number int) {
 	fmt.Println("SpamTest")
 	nameB := ""
-	nameC := ""
+	//nameC := ""
 
 	pkMap := ledger.GetPks()
 	for name, _ := range pkMap {
@@ -823,17 +833,17 @@ func spamTest() {
 		}
 		if nameB == "" {
 			nameB = name
-		} else {
-			nameC = name
-		}
+		} //else {
+		//	nameC = name
+		//}
 	}
-	go make1000Transactions(nameB)
-	go make1000Transactions(nameC)
+	go makeXTransactions(nameB, number)
+	// go make1000Transactions(nameC)
 }
 
-func make1000Transactions(name string) {
-	fmt.Println("Making 1000 transactions")
-	for i := 0; i < 10; i++ {
+func makeXTransactions(name string, number int) {
+	fmt.Println("Sends", number, "of transactions")
+	for i := 0; i < number; i++ {
 		// create a signed transaction
 		t := new(account.SignedTransaction)
 		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
@@ -849,11 +859,12 @@ func make1000Transactions(name string) {
 		signature := RSA.Sign(*toSignBig, mySk)
 		// set signature
 		t.Signature = signature.String()
+		//fmt.Println(t)
 		transactionsReceivedLock.Lock()
 		transactionsReceived[t.ID] = *t
 		transactionsReceivedLock.Unlock()
 		// Broadcast
+		fmt.Println("Sending:", t.ID)
 		SendMessageToAll("TRANSACTION", t)
-		time.Sleep(time.Second)
 	}
 }
