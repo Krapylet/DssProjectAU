@@ -156,7 +156,7 @@ func main() {
 			fmt.Println("-----------------")
 		}
 
-		if strings.Contains(msg, "!S") {
+		if strings.Contains(msg, "!SEQ") {
 			fmt.Println("--- Sequencer Address ---")
 			fmt.Println(sequencerAddress)
 			fmt.Println("-----------------")
@@ -812,6 +812,7 @@ func negTest() {
 }
 
 func spamTest() {
+	fmt.Println("SpamTest")
 	nameB := ""
 	nameC := ""
 
@@ -831,7 +832,8 @@ func spamTest() {
 }
 
 func make1000Transactions(name string) {
-	for i := 0; i < 1000; i++ {
+	fmt.Println("Making 1000 transactions")
+	for i := 0; i < 10; i++ {
 		// create a signed transaction
 		t := new(account.SignedTransaction)
 		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
@@ -847,9 +849,11 @@ func make1000Transactions(name string) {
 		signature := RSA.Sign(*toSignBig, mySk)
 		// set signature
 		t.Signature = signature.String()
-
+		transactionsReceivedLock.Lock()
 		transactionsReceived[t.ID] = *t
+		transactionsReceivedLock.Unlock()
 		// Broadcast
 		SendMessageToAll("TRANSACTION", t)
+		time.Sleep(time.Second)
 	}
 }
