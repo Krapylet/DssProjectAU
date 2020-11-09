@@ -1,8 +1,6 @@
 package main
 
 import (
-	"../RSA"
-	"./account"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -14,6 +12,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"../RSA"
+	"./account"
 )
 
 // String containing your ip and port "ip:port"
@@ -49,6 +50,7 @@ var MessagesSeenLock = new(sync.RWMutex)
 var sequencerAddressLock = new(sync.RWMutex)
 var blockCounterLock = new(sync.RWMutex)
 var transactionsReceivedLock = new(sync.RWMutex)
+var applyTransactionsLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -182,6 +184,12 @@ func main() {
 		isEndConnPhaseCommand := splitMsg[0] == "!START"
 		if isEndConnPhaseCommand {
 			go sendBlock()
+		}
+
+		//_______________SEND 1000 TRANSACTIONS TO B AND C__________________
+		isSend1000Command := splitMsg[0] == "!SEND1000"
+		if isSend1000Command {
+			go spamTest()
 		}
 
 		//______________________TRANSACTION COMMAND___________________________
@@ -543,16 +551,15 @@ func receiveMessage(conn net.Conn) {
 
 			gotConnData <- true
 			break
-		// Used to give each account 100
+		// Used to give each account 1000
 		case "GIVE":
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 100
+				ledger.Accounts[name] = 1000
 			}
 			forward(msgReceived)
 			break
 		case "NEWBLOCK":
 			// Received a new block of transactions from the sequencer
-			fmt.Println("Received a block")
 			// received block is signed as *big.Int
 			var signedBlock *big.Int
 			err := json.Unmarshal(marshalledMsg, &signedBlock)
@@ -575,7 +582,7 @@ func receiveMessage(conn net.Conn) {
 			forward(msgReceived)
 
 			// apply block
-			applyBlockTransactions(newBlock)
+			go applyBlockTransactions(newBlock)
 
 			break
 		}
@@ -616,13 +623,13 @@ func sendBlock() {
 		SendMessageToAll("NEWBLOCK", signedBlock)
 
 		// apply transactions locally
-		applyBlockTransactions(*newBlock)
+		go applyBlockTransactions(*newBlock)
 	}
 }
 
 // apply transaction given by the block locally
 func applyBlockTransactions(block BlockStruct) {
-
+	applyTransactionsLock.Lock()
 	fmt.Println("Applying block", block.Number)
 	// increment your block counter
 	atomic.AddInt64(&blockCounter, 1)
@@ -652,6 +659,7 @@ func applyBlockTransactions(block BlockStruct) {
 	transactionsReceivedLock.Lock()
 	transactionsReceived = make(map[string]account.SignedTransaction)
 	transactionsReceivedLock.Unlock()
+	applyTransactionsLock.Unlock()
 }
 
 func connectToPeers() {
@@ -801,5 +809,47 @@ func negTest() {
 	}
 	fmt.Println("-----------------")
 	fmt.Println()
+}
 
+func spamTest() {
+	nameB := ""
+	nameC := ""
+
+	pkMap := ledger.GetPks()
+	for name, _ := range pkMap {
+		if name == myName {
+			continue
+		}
+		if nameB == "" {
+			nameB = name
+		} else {
+			nameC = name
+		}
+	}
+	go make1000Transactions(nameB)
+	go make1000Transactions(nameC)
+}
+
+func make1000Transactions(name string) {
+	for i := 0; i < 1000; i++ {
+		// create a signed transaction
+		t := new(account.SignedTransaction)
+		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
+		atomic.AddInt64(&transactionCounter, 1)
+		t.Amount = 1
+		t.From = myName
+		t.To = name
+		// encode transaction as a byte array
+		toSign, _ := json.Marshal(t)
+		// Create big int from this
+		toSignBig := new(big.Int).SetBytes(toSign)
+		// Sign using SK
+		signature := RSA.Sign(*toSignBig, mySk)
+		// set signature
+		t.Signature = signature.String()
+
+		transactionsReceived[t.ID] = *t
+		// Broadcast
+		SendMessageToAll("TRANSACTION", t)
+	}
 }

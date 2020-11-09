@@ -53,7 +53,6 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) {
 	defer l.lock.Unlock()
 
 	validSignature := validateSignature(t)
-	fmt.Println("Transaction is valid:", validSignature)
 
 	if validSignature {
 		if !(l.Accounts[t.From] >= t.Amount) {
