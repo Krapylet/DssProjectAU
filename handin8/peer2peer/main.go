@@ -51,6 +51,8 @@ var sequencerAddressLock = new(sync.RWMutex)
 var blockCounterLock = new(sync.RWMutex)
 var transactionsReceivedLock = new(sync.RWMutex)
 var applyTransactionsLock = new(sync.RWMutex)
+var transactionCounterLock = new(sync.RWMutex)
+var testLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -83,6 +85,11 @@ type NewConnectionStruct struct {
 type BlockStruct struct {
 	Number           int64
 	TransactionsList []string
+}
+
+type BlockSenderStruct struct {
+	Signature []byte
+	Block []byte
 }
 
 func main() {
@@ -206,10 +213,10 @@ func main() {
 			var t *account.SignedTransaction = new(account.SignedTransaction)
 			// set values from input
 			myAddressLock.RLock()
-			msgIDCounterLock.RLock()
+			transactionCounterLock.RLock()
 			t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
 			myAddressLock.RUnlock()
-			msgIDCounterLock.RUnlock()
+			transactionCounterLock.RUnlock()
 
 			t.Amount, _ = strconv.Atoi(splitMsg[1])
 			t.From = splitMsg[2]
@@ -342,9 +349,9 @@ func tcpListener(myIP string, myPort string) {
 
 // Sends a new message to known peers. This increases the messageIDCounter
 func SendMessageToAll(typeString string, msg interface{}) {
+	testLock.Lock()
 	// Marshall the object that should be sent
 	marshalledMsg, _ := json.Marshal(msg)
-
 	// Calculate the message ID
 	myAddressLock.RLock()
 	msgIDCounterLock.RLock()
@@ -373,6 +380,7 @@ func SendMessageToAll(typeString string, msg interface{}) {
 		conns[i].Write([]byte(combinedMsg))
 	}
 	connsLock.RUnlock()
+	testLock.Unlock()
 }
 
 // forwards messages received to known peers without chaning it
@@ -471,6 +479,8 @@ func receiveMessage(conn net.Conn) {
 			transactionsReceived[t.ID] = t
 			transactionsReceivedLock.Unlock()
 
+			fmt.Println("RECEIVED:", t.ID)
+
 			// Broadcast this transaction
 			forward(msgReceived)
 			break
@@ -564,28 +574,34 @@ func receiveMessage(conn net.Conn) {
 			break
 		case "NEWBLOCK":
 			// Received a new block of transactions from the sequencer
-			// received block is signed as *big.Int
 
-			var signedBlock *big.Int
-			err := json.Unmarshal(marshalledMsg, &signedBlock)
+			// Receives BlockSenderStruct
+			var received BlockSenderStruct
+			err := json.Unmarshal(marshalledMsg, &received)
 			if err != nil {
-				fmt.Println("Error unmarshalling at NEWBLOCK: signedBlock")
+				fmt.Println("Error unmarshalling at Received Msg")
 				break
 			}
-			// unsign signedBlock
-			fmt.Println("\nSIGNED BLOCK:", signedBlock)
+			// Byte arrays
+			signature := received.Signature
+			block := received.Block
 
-			unsignedBlock := RSA.UnSign(*signedBlock, sequencerPK)
+			hashedBlock := RSA.MakeSHA256Hex(block)
+			intBlock := new(big.Int).SetBytes([]byte(hashedBlock))
+			intSignature := new(big.Int).SetBytes(signature)
+			verified := RSA.Verify(*intSignature, *intBlock, sequencerPK)
 
-			fmt.Println("\nUNSIGNED BLOCK:", unsignedBlock)
+			if !verified {
+				fmt.Println("Wrong Signature on block")
+				break
+			}
 
 			// unmarshal to block
 			var newBlock BlockStruct
-			err = json.Unmarshal(unsignedBlock.Bytes(), &newBlock)
+			err = json.Unmarshal(block, &newBlock)
 			if err != nil {
-				fmt.Println("Failed unmarshalling at NEWBLOCK: unsignedBlock")
+				fmt.Println("Failed unmarshalling at NEWBLOCK")
 				panic(err.Error())
-				break
 			}
 
 			// forward msg
@@ -625,14 +641,20 @@ func sendBlock() {
 		// Create big.Int from this
 		intBlock := new(big.Int).SetBytes(byteBlock)
 
+		hashedIntBlock := []byte(RSA.MakeSHA256Hex(intBlock.Bytes()))
+
 		// sign the intBlock
-		signedBlock := RSA.Sign(*intBlock, sequencerSK)
+		toSign := new(big.Int).SetBytes(hashedIntBlock)
+		signedBlock := RSA.Sign(*toSign, sequencerSK)
 
-		fmt.Println("\nSIGNED BLOCK:", signedBlock)
-		fmt.Println("\nUNSIGNED BLOCK:", intBlock)
 
-		// broadcast the signedBlock
-		SendMessageToAll("NEWBLOCK", signedBlock)
+
+		// [0] = byte array of the signature
+		// [1] = marshalled block
+		toSend := new(BlockSenderStruct)
+		toSend.Signature = signedBlock.Bytes()
+		toSend.Block = byteBlock
+		SendMessageToAll("NEWBLOCK", toSend)
 
 		// apply transactions locally
 		go applyBlockTransactions(*newBlock)
@@ -649,6 +671,7 @@ func applyBlockTransactions(block BlockStruct) {
 	counter := block.Number
 	transactionsList := block.TransactionsList
 
+	
 	// check if counters match: +1 since blockCounter is incremented at the beginning
 	blockCounterLock.RLock()
 	if blockCounter != (counter + 1) {
@@ -673,6 +696,7 @@ func applyBlockTransactions(block BlockStruct) {
 	transactionsReceivedLock.Unlock()
 	applyTransactionsLock.Unlock()
 }
+
 
 func connectToPeers() {
 	// connect to, up to 10 newest connections, excluding your host
@@ -824,7 +848,7 @@ func negTest() {
 func spamTest(number int) {
 	fmt.Println("SpamTest")
 	nameB := ""
-	//nameC := ""
+	nameC := ""
 
 	pkMap := ledger.GetPks()
 	for name, _ := range pkMap {
@@ -833,12 +857,12 @@ func spamTest(number int) {
 		}
 		if nameB == "" {
 			nameB = name
-		} //else {
-		//	nameC = name
-		//}
+		} else {
+			nameC = name
+		}
 	}
 	go makeXTransactions(nameB, number)
-	// go make1000Transactions(nameC)
+	go makeXTransactions(nameC, number)
 }
 
 func makeXTransactions(name string, number int) {
@@ -846,8 +870,10 @@ func makeXTransactions(name string, number int) {
 	for i := 0; i < number; i++ {
 		// create a signed transaction
 		t := new(account.SignedTransaction)
+		transactionCounterLock.Lock()
 		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
 		atomic.AddInt64(&transactionCounter, 1)
+		transactionCounterLock.Unlock()
 		t.Amount = 1
 		t.From = myName
 		t.To = name
