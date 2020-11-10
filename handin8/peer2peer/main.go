@@ -89,7 +89,7 @@ type BlockStruct struct {
 
 type BlockSenderStruct struct {
 	Signature []byte
-	Block []byte
+	Block     []byte
 }
 
 func main() {
@@ -479,8 +479,6 @@ func receiveMessage(conn net.Conn) {
 			transactionsReceived[t.ID] = t
 			transactionsReceivedLock.Unlock()
 
-			fmt.Println("RECEIVED:", t.ID)
-
 			// Broadcast this transaction
 			forward(msgReceived)
 			break
@@ -647,8 +645,6 @@ func sendBlock() {
 		toSign := new(big.Int).SetBytes(hashedIntBlock)
 		signedBlock := RSA.Sign(*toSign, sequencerSK)
 
-
-
 		// [0] = byte array of the signature
 		// [1] = marshalled block
 		toSend := new(BlockSenderStruct)
@@ -671,7 +667,6 @@ func applyBlockTransactions(block BlockStruct) {
 	counter := block.Number
 	transactionsList := block.TransactionsList
 
-	
 	// check if counters match: +1 since blockCounter is incremented at the beginning
 	blockCounterLock.RLock()
 	if blockCounter != (counter + 1) {
@@ -696,7 +691,6 @@ func applyBlockTransactions(block BlockStruct) {
 	transactionsReceivedLock.Unlock()
 	applyTransactionsLock.Unlock()
 }
-
 
 func connectToPeers() {
 	// connect to, up to 10 newest connections, excluding your host
@@ -890,7 +884,6 @@ func makeXTransactions(name string, number int) {
 		transactionsReceived[t.ID] = *t
 		transactionsReceivedLock.Unlock()
 		// Broadcast
-		fmt.Println("Sending:", t.ID)
 		SendMessageToAll("TRANSACTION", t)
 	}
 }
