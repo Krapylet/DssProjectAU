@@ -77,14 +77,16 @@ type NewConnectionStruct struct {
 // Block struct
 type BlockStruct struct {
 	ID           string
-	TransactionsList []string
-	Slot		int64
-	PreviousBlockID string
+	PK RSA.PublicKey			// vk
+	TransactionsList []string	// U
+	Slot		int64			// slot
+	PreviousBlockID string		// h
+	Draw *big.Int				// draw
 }
 
 // Block struct
 type GenesisBlockStruct struct {
-	ID           int64
+	ID           string
 	specialKeys []RSA.PublicKey
 	Seed int64
 }
@@ -99,6 +101,31 @@ type BlockSenderStruct struct {
 	Signature []byte
 	Block     []byte
 }
+
+// Do we even need this?
+func PathToN(N BlockStruct) []BlockStruct {
+	path := []BlockStruct{N}
+	cond := true
+	for cond {
+		N = blockTree[N.PreviousBlockID]
+		path = append(path, N)
+		if N.ID == "genesis" {
+			cond = false
+		}
+	}
+	return path
+}
+
+func RecPath(N BlockStruct) []BlockStruct {
+	if (N.ID == "genesis") { return append(make([]BlockStruct, 0), N) }
+	return append(RecPath(blockTree[N.PreviousBlockID]), N)
+}
+
+
+
+
+
+
 
 func main() {
 	// generate RSA Key
@@ -181,10 +208,10 @@ func main() {
 
 		var splitMsg []string = strings.Split(msg, " ")
 
-		//______________________SET EACH ACCOUNT TO 1000_________________________
+		//______________________SET EACH ACCOUNT TO 1000000_________________________
 		if strings.Contains(msg, "!GIVE") {
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 1000
+				ledger.Accounts[name] = 1000000
 			}
 			SendMessageToAll("GIVE", "")
 		}
@@ -556,7 +583,7 @@ func receiveMessage(conn net.Conn) {
 		// Used to give each account 1000
 		case "GIVE":
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 1000
+				ledger.Accounts[name] = 1000000
 			}
 			forward(msgReceived)
 			break
