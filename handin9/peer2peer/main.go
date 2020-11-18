@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 	"io/ioutil"
+	"math/rand"
 
 	"../RSA"
 	"./account"
@@ -178,15 +179,12 @@ func runLottery(pk RSA.PublicKey) {
 	slotCounter = 0
 	for {
 		seed := gBlock.Seed
-		currentBlockLock.Lock()
-		//slot := currentBlock.Slot
-		currentBlockLock.Unlock()
 		myDraw := lottery.Draw(seed, slotCounter, gBlock.SpecialKeys[pk])
 		if (lottery.HasWonLottery(myDraw, pk, seed, slotCounter, 1000000)) {
 			sendBlock(pk, myDraw, slotCounter)
 		}
 		slotCounter ++
-		time.Sleep(time.Second)	
+		//time.Sleep(time.Second)	
 	}
 }
 
@@ -535,7 +533,16 @@ func receiveMessage(conn net.Conn) {
 			return
 		}
 
+		// -------------------vvvvvv TEST CODE vvvv----------------------
+		//Simulate network delay
+		n := rand.Intn(5)
+		time.Sleep(time.Duration(n)*time.Second)
+		
+
+		// -------------------^^^^^^ TEST CODE ^^^^----------------------
 		splitMsg := strings.Split(msgReceived, ";")
+		println("msgrecieved: " + msgReceived)
+		println("len: " + strconv.Itoa(len(splitMsg)))
 		typeString := splitMsg[1]
 		ID := splitMsg[0]
 		//fmt.Println("-> type: " + typeString + ", from: " + conn.LocalAddr().String() + ", ID: " + ID)
@@ -756,7 +763,7 @@ func applyBlockTransactions(newBlock BlockStruct) {
 	currentBlockLock.RUnlock()
 
 	if (blockIsOld) {
-		fmt.Println("Recieved old block")
+		fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Recieved old block")
 		
 		//Check wether the other block creates a longer branch, and switch if it does. 
 		
