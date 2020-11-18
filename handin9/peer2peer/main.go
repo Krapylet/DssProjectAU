@@ -12,9 +12,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"io/ioutil"
 
 	"../RSA"
 	"./account"
+	"./lottery"
 )
 
 // String containing your ip and port "ip:port"
@@ -38,10 +40,13 @@ var gotConnData = make(chan bool)
 // MAP of key=transaction (with no signature), value=signature. Transaction seen since last BlockStruct...
 var transactionsReceived = make(map[string]account.SignedTransaction)
 
-var blockCounter int64 = 0
+var transactionsSinceLastBlock []string
+
 var transactionCounter int64 = 0
 
 var blockTree = make(map[string]BlockStruct)
+
+var currentBlock BlockStruct
 
 // Mutexes
 var addressesLock = new(sync.RWMutex)
@@ -49,7 +54,7 @@ var connsLock = new(sync.RWMutex)
 var msgIDCounterLock = new(sync.RWMutex)
 var myAddressLock = new(sync.RWMutex)
 var MessagesSeenLock = new(sync.RWMutex)
-var blockCounterLock = new(sync.RWMutex)
+var currentBlockLock = new(sync.RWMutex)
 var transactionsReceivedLock = new(sync.RWMutex)
 var applyTransactionsLock = new(sync.RWMutex)
 var transactionCounterLock = new(sync.RWMutex)
@@ -62,6 +67,8 @@ var MessageIDCounter = 0
 var myName string
 var myPk RSA.PublicKey
 var mySk RSA.SecretKey
+
+var gBlock GenesisBlockStruct
 
 // Use when getting a new connection
 type ConnectStruct struct {
@@ -76,25 +83,27 @@ type NewConnectionStruct struct {
 
 // Block struct
 type BlockStruct struct {
-	ID           string
-	PK RSA.PublicKey			// vk
-	TransactionsList []string	// U
-	Slot		int64			// slot
-	PreviousBlockID string		// h
-	Draw *big.Int				// draw
+	ID          		string
+	PK 					RSA.PublicKey// vk
+	TransactionsList 	[]string	// U
+	Slot				int64		// slot
+	PreviousBlockID 	string		// h
+	Draw 				*big.Int	// draw
 }
 
-// Block struct
+// Special genesis block which holds other values than normal blocks
 type GenesisBlockStruct struct {
-	ID           string
-	specialKeys []RSA.PublicKey
-	Seed int64
+	ID          string
+	SpecialKeys map[RSA.PublicKey]RSA.SecretKey
+	Seed 		int64
 }
 
 func makeGenesisBlock() GenesisBlockStruct {
-	gBlock := new(GenesisBlockStruct)
-	gBlock.Seed = 2
-	return *gBlock
+	gBlock = *new(GenesisBlockStruct)
+	gBlock.Seed = 3
+	gBlock.ID = "genesis"
+	gBlock.SpecialKeys = Read10KeysFromFile()
+	return gBlock
 }
 
 type BlockSenderStruct struct {
@@ -102,34 +111,97 @@ type BlockSenderStruct struct {
 	Block     []byte
 }
 
-// Do we even need this?
+// Returns a list from block N to the genesis block, inlcuding N and the genesis block
 func PathToN(N BlockStruct) []BlockStruct {
-	path := []BlockStruct{N}
-	cond := true
-	for cond {
-		N = blockTree[N.PreviousBlockID]
-		path = append(path, N)
-		if N.ID == "genesis" {
-			cond = false
-		}
+	if (N.ID == "genesis") { return []BlockStruct{N} }
+	return append(PathToN(blockTree[N.PreviousBlockID]), N)
+}
+
+func TreeLength(N BlockStruct) int{
+	return (len(PathToN(N)))
+}
+
+func ChangeBranchTo(N BlockStruct){
+	if (N.ID == "genesis") { 
+		ledger.Reset()
+		give1MillionAU()
+	} 	else 	{
+	ChangeBranchTo(blockTree[N.PreviousBlockID])
+	applyBlockTransactions(N)
 	}
-	return path
 }
 
-func RecPath(N BlockStruct) []BlockStruct {
-	if (N.ID == "genesis") { return append(make([]BlockStruct, 0), N) }
-	return append(RecPath(blockTree[N.PreviousBlockID]), N)
+// read 10 specieal RSA keys from "special_keys.txt" and set their account to 1.000.000 AU
+func Read10KeysFromFile() map[RSA.PublicKey]RSA.SecretKey{
+
+	//keys -> marshall -> string with ; and : -> write bytearray
+	//read bytearray -> cast to string, and split on ; and : -> unmarshall -> keys
+
+	data, err := ioutil.ReadFile("special_keys.txt")
+	
+	if(err != nil){
+		panic("Could not read file. Error message: " + err.Error())
+	}
+
+	dataString := string(data)
+	dataArray := strings.Split(dataString, ";")
+
+	var specialKeys = make(map[RSA.PublicKey]RSA.SecretKey)
+	
+	for i := 0; i < 10; i++ {
+		mpk := dataArray[i*2]
+		msk := dataArray[1+i*2]
+		var pk RSA.PublicKey
+		var sk RSA.SecretKey 
+		PKerr := json.Unmarshal([]byte(mpk), &pk)
+		SKerr := json.Unmarshal([]byte(msk), &sk)
+
+		if (PKerr != nil) {panic("Error reading " + strconv.Itoa(i) + "'th PK. Error message: " + PKerr.Error())}
+		if (SKerr != nil) {panic("Error reading " + strconv.Itoa(i) + "'th SK. Error message: " + SKerr.Error())}
+
+		specialKeys[pk] = sk
+	}
+
+	return specialKeys
 }
 
+func give1MillionAU() {
+	for pk, _ := range gBlock.SpecialKeys {
+		name := ledger.EncodePK(pk)
+		ledger.Accounts[name] = 1000000
+	}
+	
+}
 
-
-
-
+func runLottery(pk RSA.PublicKey) {
+	var slotCounter int64
+	slotCounter = 0
+	for {
+		seed := gBlock.Seed
+		currentBlockLock.Lock()
+		//slot := currentBlock.Slot
+		currentBlockLock.Unlock()
+		myDraw := lottery.Draw(seed, slotCounter, gBlock.SpecialKeys[pk])
+		if (lottery.HasWonLottery(myDraw, pk, seed, slotCounter, 1000000)) {
+			sendBlock(pk, myDraw, slotCounter)
+		}
+		slotCounter ++
+		time.Sleep(time.Second)	
+	}
+}
 
 
 func main() {
 	// generate RSA Key
 	myPk, mySk = RSA.KeyGen(2048)
+
+
+	gBlock = makeGenesisBlock()
+	currentBlock = *new(BlockStruct)
+	currentBlock.ID = "genesis"
+	currentBlock.Slot = 0
+
+	give1MillionAU()
 
 	// Tries to connect, otherwise start own connection at port 20000
 	connect()
@@ -154,8 +226,10 @@ func main() {
 		//Trim msg of leading and trailing whitespace
 		msg = strings.TrimSpace(msg)
 
+		var splitMsg []string = strings.Split(msg, " ")
+
 		//_________________DEBUG COMMANDS__________________
-		if strings.Contains(msg, "!A") {
+		if msg == "!A" {
 			fmt.Println("--- KNOWN LISTENERS ---")
 			myAddressLock.RLock()
 			fmt.Println("(I LISTEN ON: " + myAddress + ")")
@@ -166,7 +240,7 @@ func main() {
 			}
 			addressesLock.RUnlock()
 		}
-		if strings.Contains(msg, "!C") {
+		if msg == "!C" {
 			fmt.Println("--- MY CONS ---")
 			connsLock.RLock()
 			for i := range conns {
@@ -175,21 +249,21 @@ func main() {
 			connsLock.RUnlock()
 		}
 
-		if strings.Contains(msg, "!L") {
+		if msg == "!L" {
 			fmt.Println("--- MY LEDGER ---")
 			for key, value := range ledger.Accounts {
-				fmt.Println(key + ": " + strconv.Itoa(value))
+				fmt.Println(key + ": " + strconv.Itoa(value) + " AU")
 			}
 			fmt.Println("-----------------")
 		}
 
-		if strings.Contains(msg, "!N") {
+		if msg == "!N" {
 			fmt.Println("--- MY NAME ---")
 			fmt.Println(myName)
 			fmt.Println("-----------------")
 		}
 
-		if strings.Contains(msg, "!P") {
+		if msg == "!P" {
 			fmt.Println("--- KNOWN PKS ---")
 			var pks = ledger.GetPks()
 			for encodedKey := range pks {
@@ -198,30 +272,35 @@ func main() {
 			fmt.Println("-----------------")
 		}
 
-
-		if strings.Contains(msg, "!TESTPOS") {
+		if msg == "!TESTPOS" {
 			posTest()
 		}
-		if strings.Contains(msg, "!TESTNEG") {
+		if msg == "!TESTNEG" {
 			negTest()
 		}
 
-		var splitMsg []string = strings.Split(msg, " ")
-
-		//______________________SET EACH ACCOUNT TO 1000000_________________________
-		if strings.Contains(msg, "!GIVE") {
+		//______________________SET EACH ACCOUNT TO 1000_________________________
+		if msg == "!GIVE" {
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 1000000
+				ledger.Accounts[name] = 1000
 			}
 			SendMessageToAll("GIVE", "")
 		}
 
+		//________________ STARTS A LOTTERY FOR EACH SPECIAL KEY_________________
+		if msg == "!LOTTERY" {
+			fmt.Println("--- STARTING LOTTERY ---")
+			for pk, _ := range(gBlock.SpecialKeys) {
+				go runLottery(pk)
+			}
+		}
+
 		//_______________END CONNECTING PHASE AND START SENDING BLOCKS__________
 		// should only be used on the initial host
-		isEndConnPhaseCommand := splitMsg[0] == "!START"
-		if isEndConnPhaseCommand {
-			go sendBlock()
-		}
+		//isEndConnPhaseCommand := splitMsg[0] == "!START"
+		//if isEndConnPhaseCommand {
+		//	go sendBlock()
+		//}
 
 		//_______________SEND X TRANSACTIONS TO B AND C__________________
 		isSend1000Command := splitMsg[0] == "!SPAM"
@@ -236,19 +315,30 @@ func main() {
 		if isSendCommand {
 
 			if len(splitMsg) != 4 {
-				fmt.Println("Invalid SEND command")
+				fmt.Println("Invalid SEND command: Need 3 arguments (Amount, from, to), but recieved " + strconv.Itoa(len(splitMsg) - 1) + "arguments")
+				continue
+			}
+
+			var amount, err = strconv.Atoi(splitMsg[1])
+			
+			// check if its a valid amount
+			if (err != nil){
+				fmt.Println("Invalid SEND command: Amount is not an integer")
+				continue
+			}
+
+			if (amount < 0) {
+				fmt.Println("Invalid SEND command: amount most be positive")
 				continue
 			}
 
 			var t *account.SignedTransaction = new(account.SignedTransaction)
 			// set values from input
-			myAddressLock.RLock()
 			transactionCounterLock.RLock()
-			t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
-			myAddressLock.RUnlock()
+			t.ID = splitMsg[2] + ":" + strconv.FormatInt(transactionCounter, 10)
 			transactionCounterLock.RUnlock()
 
-			t.Amount, _ = strconv.Atoi(splitMsg[1])
+			t.Amount = amount
 			t.From = splitMsg[2]
 			t.To = strings.TrimSpace(splitMsg[3])
 
@@ -262,22 +352,17 @@ func main() {
 			// set signature
 			t.Signature = signature.String()
 
-			// check if its a valid amount
-			if !(t.Amount > 0) {
-				fmt.Println("Invalid Transaction, amount most be positive")
-				continue
-			}
-
 			// try apply transaction
 			// ledger.SignedTransaction(t)
 
 			atomic.AddInt64(&transactionCounter, 1)
 
 			// get id of transaction, t.id
-			transactionNoSign := t.ID
 			transactionsReceivedLock.Lock()
-			transactionsReceived[transactionNoSign] = *t
+			transactionsReceived[t.ID] = *t
+			transactionsSinceLastBlock = append(transactionsSinceLastBlock, t.ID)
 			transactionsReceivedLock.Unlock()
+			
 
 			fmt.Println(t)
 
@@ -327,6 +412,9 @@ func connect() {
 		// adds your pk to ledger pks list and returns your name
 		myName = ledger.EncodePK(myPk)
 
+
+
+
 	} else {
 		fmt.Println("Connection Established!")
 		defer hostConn.Close()
@@ -342,7 +430,7 @@ func connect() {
 		SendMessage("GETCONNDATA", "", hostConn)
 		// wait til received
 		<-gotConnData
-
+		
 	}
 }
 
@@ -502,6 +590,7 @@ func receiveMessage(conn net.Conn) {
 			// add to seen
 			transactionsReceivedLock.Lock()
 			transactionsReceived[t.ID] = t
+			transactionsSinceLastBlock = append(transactionsSinceLastBlock, t.ID)
 			transactionsReceivedLock.Unlock()
 
 			// Broadcast this transaction
@@ -583,113 +672,109 @@ func receiveMessage(conn net.Conn) {
 		// Used to give each account 1000
 		case "GIVE":
 			for name, _ := range ledger.GetPks() {
-				ledger.Accounts[name] = 1000000
+				ledger.Accounts[name] = 1000
 			}
 			forward(msgReceived)
 			break
 		case "NEWBLOCK":
 
-			// Receives BlockSenderStruct
-			var received BlockSenderStruct
-			err := json.Unmarshal(marshalledMsg, &received)
+			// Receives BlockStruct
+			var block BlockStruct
+			err := json.Unmarshal(marshalledMsg, &block)
 			if err != nil {
-				fmt.Println("Error unmarshalling at Received Msg")
+				fmt.Println("Error unmarshalling at Received Msg: " + err.Error())
 				break
 			}
-			// Byte arrays
-			signature := received.Signature
-			block := received.Block
+			
+			// Check that the lottery is valid
+			if (lottery.VerifyDraw(block.Draw, gBlock.Seed, block.Slot, block.PK)) {				
+				// forward msg
+				forward(msgReceived)
 
-			hashedBlock := RSA.MakeSHA256Hex(block)
-			intBlock := new(big.Int).SetBytes([]byte(hashedBlock))
-			intSignature := new(big.Int).SetBytes(signature)
-			verified := RSA.Verify(*intSignature, *intBlock, INSERTSOMETHINGHERE)
+				// ...
 
-			if !verified {
-				fmt.Println("Wrong Signature on block")
-				break
+				// Try to apply block
+				go applyBlockTransactions(block)
 			}
-
-			// unmarshal to block
-			var newBlock BlockStruct
-			err = json.Unmarshal(block, &newBlock)
-			if err != nil {
-				fmt.Println("Failed unmarshalling at NEWBLOCK")
-				panic(err.Error())
-			}
-
-			// forward msg
-			forward(msgReceived)
-
-			// apply block
-			go applyBlockTransactions(newBlock)
 
 			break
 		}
 	}
 }
 
-// Send a new BlockStruct every 10 sec. Only the initial host runs this
-func sendBlock() {
+// Send a new BlockStruct
+func sendBlock(pk RSA.PublicKey, draw *big.Int, slot int64) {
 	// define a new block
 	newBlock := new(BlockStruct)
-	for {
-		time.Sleep(time.Second * 10)
-		blockCounterLock.RLock()
-		newBlock.Number = blockCounter
-		blockCounterLock.RUnlock()
-		// create list of all transactions
-		var listOfTransactions []string
-		transactionsReceivedLock.RLock()
-		for tid, _ := range transactionsReceived {
-			listOfTransactions = append(listOfTransactions, tid)
-		}
-		transactionsReceivedLock.RUnlock()
-		// Each transaction in the list is:
-		// - id - Each peer are responsible for storing the signedTransaction
-		newBlock.TransactionsList = listOfTransactions
 
-		// marshal to get bytes of block
-		byteBlock, _ := json.Marshal(newBlock)
-		// Create big.Int from this
-		intBlock := new(big.Int).SetBytes(byteBlock)
+	newBlock.PK = pk
 
-		hashedIntBlock := []byte(RSA.MakeSHA256Hex(intBlock.Bytes()))
+	
+	// Put all transactions seen since last block in this block
+	transactionsReceivedLock.Lock()
+	newBlock.TransactionsList = transactionsSinceLastBlock
+	transactionsSinceLastBlock = make([]string, 0)
+	transactionsReceivedLock.Unlock()
 
-		// sign the intBlock
-		toSign := new(big.Int).SetBytes(hashedIntBlock)
-		signedBlock := RSA.Sign(*toSign, YOURSK)
+	newBlock.PreviousBlockID = currentBlock.ID
+	newBlock.Draw = draw
 
-		// [0] = byte array of the signature
-		// [1] = marshalled block
-		toSend := new(BlockSenderStruct)
-		toSend.Signature = signedBlock.Bytes()
-		toSend.Block = byteBlock
-		SendMessageToAll("NEWBLOCK", toSend)
+	newBlock.Slot = slot
+	
+	// marshal to get bytes of block
+	byteBlock, _ := json.Marshal(newBlock)
 
-		// apply transactions locally
-		go applyBlockTransactions(*newBlock)
-	}
+	hashedBlock:= RSA.MakeSHA256Hex(byteBlock)
+
+	// Set Block ID
+	newBlock.ID = hashedBlock
+
+
+	SendMessageToAll("NEWBLOCK", newBlock)
+	println("Len of transactionlist in block we are about to send: " + strconv.Itoa(len((*newBlock).TransactionsList)))
+	// apply transactions locally
+	go applyBlockTransactions(*newBlock)
 }
 
 // apply transaction given by the block locally
-func applyBlockTransactions(block BlockStruct) {
+func applyBlockTransactions(newBlock BlockStruct) {
 	applyTransactionsLock.Lock()
-	fmt.Println("Applying block", block.Number)
-	// increment your block counter
-	atomic.AddInt64(&blockCounter, 1)
+	fmt.Println("Applying block| slot: " + strconv.FormatInt(newBlock.Slot, 10) + "; ID: " + newBlock.ID)
 
-	counter := block.Number
-	transactionsList := block.TransactionsList
+	// inserting block in branch
+	blockTree[newBlock.ID] = newBlock
 
-	// check if counters match: +1 since blockCounter is incremented at the beginning
-	blockCounterLock.RLock()
-	if blockCounter != (counter + 1) {
-		fmt.Println("Wrong Block Counter")
-		blockCounterLock.RUnlock()
+	// reset since last block
+	transactionsReceivedLock.Lock()
+	transactionsSinceLastBlock = make([]string, 0)
+	transactionsReceivedLock.Unlock()
+	
+	// check if new block can be applyed to the current branch
+	currentBlockLock.RLock()
+	var blockIsOld = currentBlock.Slot > newBlock.Slot
+	var currentLen = TreeLength(currentBlock)
+	currentBlockLock.RUnlock()
+
+	if (blockIsOld) {
+		fmt.Println("Recieved old block")
+		
+		//Check wether the other block creates a longer branch, and switch if it does. 
+		
+		var alternativeLen = TreeLength(newBlock)
+		var switchBranch = currentLen < alternativeLen
+		
+		if(switchBranch){
+			ChangeBranchTo(newBlock)
+		}
+
 		return
 	}
-	blockCounterLock.RUnlock()
+
+	transactionsList := newBlock.TransactionsList
+	
+	println("Is about to apply " + strconv.Itoa(len(transactionsList)) + " transactions")
+
+	transactionsReceivedLock.Lock()
 	// list of: id-amount-from-to
 	for _, t := range transactionsList {
 		// get transaction, will panic if this transaction was not received
@@ -700,9 +785,11 @@ func applyBlockTransactions(block BlockStruct) {
 		}
 
 	}
-	// reset map of seen transactions
-	transactionsReceivedLock.Lock()
-	transactionsReceived = make(map[string]account.SignedTransaction)
+
+	//Apply bonus to whoever made the block
+	ledger.GiveBonus(newBlock.PK, len(transactionsList))
+	
+	
 	transactionsReceivedLock.Unlock()
 	applyTransactionsLock.Unlock()
 }
@@ -766,6 +853,7 @@ func removeAddress(address string) {
 	addresses = temp
 }
 
+
 // Automatic test for testing valid SignedTransactions
 func posTest() {
 	fmt.Println()
@@ -775,40 +863,38 @@ func posTest() {
 	fmt.Println()
 	fmt.Println("-- sending 50 to each account from my account --")
 	// Send 50 to each known peer from your own account.
-	for name, _ := range pkMap {
+	senderName := ""
+	
+	for pk, _ := range gBlock.SpecialKeys {
 		// skip your own account
-		if name == myName {
+		if senderName == "" {
+			senderName = ledger.EncodePK(pk)
 			continue
 		}
 		// create a signed transaction
 		t := new(account.SignedTransaction)
-		t.ID = myAddress + ":" + strconv.FormatInt(transactionCounter, 10)
+		t.From = senderName
+		t.ID = t.From + ":" + strconv.FormatInt(transactionCounter, 10)
+		atomic.AddInt64(&transactionCounter, 1)
 		t.Amount = 50
-		t.From = myName
-		t.To = name
+		t.To = ledger.EncodePK(pk)
 		// encode transaction as a byte array
 		toSign, _ := json.Marshal(t)
 		// Create big int from this
 		toSignBig := new(big.Int).SetBytes(toSign)
 		// Sign using SK
-		signature := RSA.Sign(*toSignBig, mySk)
+		signature := RSA.Sign(*toSignBig, gBlock.SpecialKeys[pkMap[senderName]])
 		// set signature
 		t.Signature = signature.String()
 
+		
+		transactionsReceivedLock.Lock()
 		transactionsReceived[t.ID] = *t
+		transactionsSinceLastBlock = append(transactionsSinceLastBlock, t.ID)
+		transactionsReceivedLock.Unlock()
 		// Broadcast
 		SendMessageToAll("TRANSACTION", t)
 	}
-
-	// Print the ledger values
-	fmt.Println()
-	fmt.Println("-- OUTPUT FROM TRANSACTIONS --")
-	fmt.Println("--- MY LEDGER ---")
-	for key, value := range ledger.Accounts {
-		fmt.Println(key + ": " + strconv.Itoa(value))
-	}
-	fmt.Println("-----------------")
-	fmt.Println()
 }
 
 // Try to send 100 from an account that is not yours

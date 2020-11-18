@@ -60,7 +60,7 @@ func (l *Ledger) SignedTransaction(t *SignedTransaction) {
 			return
 		}
 		l.Accounts[t.From] -= t.Amount
-		l.Accounts[t.To] += t.Amount
+		l.Accounts[t.To] += t.Amount - 1
 	}
 }
 
@@ -110,4 +110,18 @@ func (l *Ledger) GetPks() map[string]RSA.PublicKey {
 
 func (l *Ledger) SetPks(newPks map[string]RSA.PublicKey) {
 	pksMap = newPks
+}
+
+func (l *Ledger) Reset(){
+	l.lock.Lock()
+	for key, _ := range l.Accounts{
+		l.Accounts[key] = 0
+	}
+	l.lock.Unlock()
+}
+
+func (l *Ledger) GiveBonus(pk RSA.PublicKey, amountOfTrans int){
+	l.lock.Lock()
+	l.Accounts[l.EncodePK(pk)] += 10 + amountOfTrans
+	l.lock.Unlock()
 }
