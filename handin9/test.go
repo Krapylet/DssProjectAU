@@ -1,34 +1,38 @@
 package main
 
 import (
-	"./peer2peer/lottery"
 	"./RSA"
-	"fmt"
+	"encoding/json"
+	"os"
 )
 
+func generate10KeysToFile(filename string) {
 
-func main() {
+	// Text will be:
+	// pk:sk;pk:sk;....
+	text := ""
+
+	// Generate keys
 	for i := 0; i < 10; i++ {
-		test()
+		pk, sk := RSA.KeyGen(2048)
+		pkM, _ := json.Marshal(pk)
+		skM, _ := json.Marshal(sk)
+
+		text = text + string(pkM) + ";" + string(skM) + ";"
 	}
-}
 
-func test() {
+	//Create output file
+	f, err := os.Create(filename)
 
-	seed := 1
-	slot := 0
-	pk, sk := RSA.KeyGen(2048)
-	var tickets int64 = 1000000	
-	winCounter := 0
-	for i := 0; i < 10; i++ {
-		draw := lottery.Draw(seed, slot, sk)
-		hasWon := lottery.HasWonLottery(draw, pk, seed, slot, tickets)
-		if (hasWon){ 
-			winCounter++ 
-			fmt.Println("Won on slot:", slot)
-		}
-		slot++
+	if err != nil {
+		panic(err.Error())
 	}
-	fmt.Println("wins:", winCounter)
+	defer f.Close()
 
+	//Write text to file
+	_, err = f.Write([]byte(text))
+
+	if err != nil {
+		panic(err.Error())
+	}
 }
