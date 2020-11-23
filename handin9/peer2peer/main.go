@@ -223,7 +223,7 @@ func applyFakeBlocks() {
 		blocksMissingTransactionsLock.Lock()
 		blocksMissingTransactions = append(blocksMissingTransactions, b.Value.(BlockStruct))
 		blocksMissingTransactionsLock.Unlock()
-		applyNext()
+		applyQueue()
 	}
 }
 
@@ -733,7 +733,7 @@ func receiveMessage(conn net.Conn) {
 			forward(msgReceived)
 
 			// Check if this transactions was missing in any received blocks
-			go applyNext()
+			go applyQueue()
 
 			break
 		// Receive a disconnect message
@@ -833,7 +833,7 @@ func receiveMessage(conn net.Conn) {
 
 				blocksMissingTransactions = append(blocksMissingTransactions, newBlock)
 
-				go applyNext()
+				go applyQueue()
 			}
 			break
 		}
@@ -886,7 +886,7 @@ func checkBlockTransactions(b BlockStruct) bool {
 }
 
 // tries to apply next block in queue
-func applyNext() {
+func applyQueue() {
 	blocksMissingTransactionsLock.Lock()
 	defer blocksMissingTransactionsLock.Unlock()
 	if (len(blocksMissingTransactions) == 0) {
@@ -927,6 +927,8 @@ func applyBlockTransactions(newBlock BlockStruct) {
 	// inserting block in branch
 	blockTree[newBlock.ID] = newBlock
 
+
+
 	// reset since last block
 	transactionsReceivedLock.Lock()
 	transactionsSinceLastBlock = make([]string, 0)
@@ -962,7 +964,7 @@ func applyBlockTransactions(newBlock BlockStruct) {
 
 		return
 	}
-
+	
 	currentBlockLock.Lock()
 	currentBlock = newBlock
 	currentBlockLock.Unlock()
