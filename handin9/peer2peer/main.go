@@ -223,7 +223,7 @@ func applyFakeBlocks() {
 		blocksMissingTransactionsLock.Lock()
 		blocksMissingTransactions = append(blocksMissingTransactions, b.Value.(BlockStruct))
 		blocksMissingTransactionsLock.Unlock()
-		go applyNext()
+		applyNext()
 	}
 }
 
@@ -895,9 +895,9 @@ func applyNext() {
 	for i := 0; i < len(blocksMissingTransactions); i ++ {
 		if checkBlockTransactions(blocksMissingTransactions[i]) {
 			applyBlockTransactions(blocksMissingTransactions[i])
-			// remove 1st block
+			// remove block i
 			
-			blocksMissingTransactions = blocksMissingTransactions[1:]
+			blocksMissingTransactions = append(blocksMissingTransactions[:i], blocksMissingTransactions[i+1:]...)
 		}
 	}
 
@@ -908,7 +908,7 @@ func applyNext() {
 		if reachedGenesis {
 			applyBlockTransactions(blocksMissingBlocks[i])
 			if len(blocksMissingBlocks) - 1 >= i {
-				blocksMissingTransactions = append(blocksMissingBlocks[:i], blocksMissingBlocks[i+1:]...)			
+				blocksMissingBlocks = append(blocksMissingBlocks[:i], blocksMissingBlocks[i+1:]...)			
 			} else {
 				blocksMissingBlocks = blocksMissingBlocks[:i]
 			}
