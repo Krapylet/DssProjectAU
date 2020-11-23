@@ -47,6 +47,9 @@ var transactionCounter int64 = 0
 
 var blockTree = make(map[string]BlockStruct)
 
+var blocksMissingTransactions []BlockStruct
+var blocksMissingBlocks []BlockStruct
+
 var currentBlock BlockStruct
 
 // Mutexes
@@ -60,6 +63,8 @@ var transactionsReceivedLock = new(sync.RWMutex)
 var applyTransactionsLock = new(sync.RWMutex)
 var transactionCounterLock = new(sync.RWMutex)
 var testLock = new(sync.RWMutex)
+var blocksMissingBlocksLock = new(sync.RWMutex)
+var blocksMissingTransactionsLock = new(sync.RWMutex)
 
 var ledger *account.Ledger = account.MakeLedger()
 
@@ -108,16 +113,23 @@ func makeGenesisBlock() GenesisBlockStruct {
 }
 
 // Returns a list from block N to the genesis block, inlcuding N and the genesis block
-func PathToN(N BlockStruct) []BlockStruct {
+func PathToN(N BlockStruct) ([]BlockStruct, bool) {
 	if N.ID == "genesis" {
-		println("Recursion bottom for PathToN")
-		return []BlockStruct{N}
+
+		return []BlockStruct{N}, true
 	}
-	return append(PathToN(blockTree[N.PreviousBlockID]), N)
+	prevN, exists := blockTree[N.PreviousBlockID] 
+	if exists { 
+		path, reachGenesis := PathToN(prevN)
+		return append(path, N), reachGenesis 
+	}	else 	{
+		return []BlockStruct{N}, false
+	}
 }
 
-func BranchLength(N BlockStruct) int {
-	return (len(PathToN(N)))
+func BranchLength(N BlockStruct) (int, bool) {
+	val, reachGenesis := PathToN(N)
+	return len(val), reachGenesis
 }
 
 func ChangeBranchTo(N BlockStruct) {
@@ -207,9 +219,12 @@ func applyFakeBlocks() {
 	fmt.Println("Read " + strconv.Itoa(blocks.Len()) + " fake blocks")
 	fmt.Println("Applying fake blocks")
 	for b := blocks.Front(); b != nil; b = b.Next() {
-		applyBlockTransactions(b.Value.(BlockStruct))
+		//applyBlockTransactions(b.Value.(BlockStruct))
+		blocksMissingTransactionsLock.Lock()
+		blocksMissingTransactions = append(blocksMissingTransactions, b.Value.(BlockStruct))
+		blocksMissingTransactionsLock.Unlock()
+		go applyNext()
 	}
-	fmt.Println("Fake blocks applied")
 }
 
 func logBlock(b BlockStruct) {
@@ -716,6 +731,10 @@ func receiveMessage(conn net.Conn) {
 
 			// Broadcast this transaction
 			forward(msgReceived)
+
+			// Check if this transactions was missing in any received blocks
+			go applyNext()
+
 			break
 		// Receive a disconnect message
 		case "DISCONNECT":
@@ -800,24 +819,22 @@ func receiveMessage(conn net.Conn) {
 		case "NEWBLOCK":
 
 			// Receives BlockStruct
-			var block BlockStruct
-			err := json.Unmarshal(marshalledMsg, &block)
+			var newBlock BlockStruct
+			err := json.Unmarshal(marshalledMsg, &newBlock)
 			if err != nil {
 				fmt.Println("Error unmarshalling at Received Msg: " + err.Error())
 				break
 			}
 
 			// Check that the lottery is valid
-			if lottery.VerifyDraw(block.Draw, gBlock.Seed, block.Slot, block.PK) {
+			if lottery.VerifyDraw(newBlock.Draw, gBlock.Seed, newBlock.Slot, newBlock.PK) {
 				// forward msg
 				forward(msgReceived)
 
-				// ...
+				blocksMissingTransactions = append(blocksMissingTransactions, newBlock)
 
-				// Try to apply block
-				go applyBlockTransactions(block)
+				go applyNext()
 			}
-
 			break
 		}
 	}
@@ -858,6 +875,50 @@ func sendBlock(pk RSA.PublicKey, draw *big.Int, slot int64) {
 	go applyBlockTransactions(*newBlock)
 }
 
+// check if all transactions in block b has been seen
+func checkBlockTransactions(b BlockStruct) bool {
+	for i := 0; i < len(b.TransactionsList); i++ {
+		if _, seen := transactionsReceived[b.TransactionsList[i]]; !seen {
+			return false
+		}
+	}
+	return true	
+}
+
+// tries to apply next block in queue
+func applyNext() {
+	blocksMissingTransactionsLock.Lock()
+	defer blocksMissingTransactionsLock.Unlock()
+	if (len(blocksMissingTransactions) == 0) {
+		return
+	}
+	for i := 0; i < len(blocksMissingTransactions); i ++ {
+		if checkBlockTransactions(blocksMissingTransactions[i]) {
+			applyBlockTransactions(blocksMissingTransactions[i])
+			// remove 1st block
+			
+			blocksMissingTransactions = blocksMissingTransactions[1:]
+		}
+	}
+
+	blocksMissingBlocksLock.Lock()
+	defer blocksMissingBlocksLock.Unlock()
+	for i := 0; i < len(blocksMissingBlocks); i++ {
+		_, reachedGenesis := PathToN(blocksMissingBlocks[i])
+		if reachedGenesis {
+			applyBlockTransactions(blocksMissingBlocks[i])
+			if len(blocksMissingBlocks) - 1 >= i {
+				blocksMissingTransactions = append(blocksMissingBlocks[:i], blocksMissingBlocks[i+1:]...)			
+			} else {
+				blocksMissingBlocks = blocksMissingBlocks[:i]
+			}
+			//If we find a block that can be applied, we need to look through all the previous blocksmissingblocks again
+			i = -1
+		}
+	}
+}
+
+
 // apply transaction given by the block locally
 func applyBlockTransactions(newBlock BlockStruct) {
 	applyTransactionsLock.Lock()
@@ -874,7 +935,7 @@ func applyBlockTransactions(newBlock BlockStruct) {
 	// check if new block can be applyed to the current branch
 	currentBlockLock.RLock()
 	var isBranching = newBlock.PreviousBlockID != currentBlock.ID
-	var currentLen = BranchLength(currentBlock)
+	var currentLen, _ = BranchLength(currentBlock)
 	currentBlockLock.RUnlock()
 
 	if isBranching {
@@ -882,12 +943,20 @@ func applyBlockTransactions(newBlock BlockStruct) {
 
 		//Check wether the other block creates a longer branch, and switch if it does.
 
-		var alternativeLen = BranchLength(newBlock)
+		var alternativeLen, reachGenesis  = BranchLength(newBlock)
 		var switchBranch = currentLen < alternativeLen
+
+		if !reachGenesis {
+			blocksMissingBlocksLock.Lock()
+			blocksMissingBlocks = append(blocksMissingBlocks, newBlock)
+			blocksMissingBlocksLock.Unlock()
+			applyTransactionsLock.Unlock()
+			return
+		}
 
 		applyTransactionsLock.Unlock()
 		if switchBranch {
-			println("New block has longer branch: Rolling back and applying new block branch")
+			fmt.Println("New block has longer branch: Rolling back and applying new block branch")
 			ChangeBranchTo(newBlock)
 		}
 
