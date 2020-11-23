@@ -222,6 +222,7 @@ func applyFakeBlocks() {
 		//applyBlockTransactions(b.Value.(BlockStruct))
 		blocksMissingTransactionsLock.Lock()
 		blocksMissingTransactions = append(blocksMissingTransactions, b.Value.(BlockStruct))
+		SendMessageToAll("NEWBLOCK", b.Value.(BlockStruct))
 		blocksMissingTransactionsLock.Unlock()
 		applyQueue()
 	}
@@ -670,8 +671,8 @@ func receiveMessage(conn net.Conn) {
 		}
 
 		splitMsg := strings.Split(msgReceived, ";")
-		println("msgrecieved: " + msgReceived)
-		println("len: " + strconv.Itoa(len(splitMsg)))
+		//println("msgrecieved: " + msgReceived)
+		//println("len: " + strconv.Itoa(len(splitMsg)))
 		typeString := splitMsg[1]
 		ID := splitMsg[0]
 		//fmt.Println("-> type: " + typeString + ", from: " + conn.LocalAddr().String() + ", ID: " + ID)
